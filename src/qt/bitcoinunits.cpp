@@ -2,90 +2,90 @@
 
 #include <QStringList>
 
-GrumpyCoinUnits::GrumpyCoinUnits(QObject *parent):
+BitcoinUnits::BitcoinUnits(QObject *parent):
         QAbstractListModel(parent),
         unitlist(availableUnits())
 {
 }
 
-QList<GrumpyCoinUnits::Unit> GrumpyCoinUnits::availableUnits()
+QList<BitcoinUnits::Unit> BitcoinUnits::availableUnits()
 {
-    QList<GrumpyCoinUnits::Unit> unitlist;
-    unitlist.append(GRUMP);
-    unitlist.append(mGRUMP);
-    unitlist.append(uGRUMP);
+    QList<BitcoinUnits::Unit> unitlist;
+    unitlist.append(BTC);
+    unitlist.append(mBTC);
+    unitlist.append(uBTC);
     return unitlist;
 }
 
-bool GrumpyCoinUnits::valid(int unit)
+bool BitcoinUnits::valid(int unit)
 {
     switch(unit)
     {
-    case GRUMP:
-    case mGRUMP:
-    case uGRUMP:
+    case BTC:
+    case mBTC:
+    case uBTC:
         return true;
     default:
         return false;
     }
 }
 
-QString GrumpyCoinUnits::name(int unit)
+QString BitcoinUnits::name(int unit)
 {
     switch(unit)
     {
-    case GRUMP: return QString("GRUMP");
-    case mGRUMP: return QString("mGRUMP");
-    case uGRUMP: return QString::fromUtf8("μGRUMP");
+    case BTC: return QString("GRUMP");
+    case mBTC: return QString("mGRUMP");
+    case uBTC: return QString::fromUtf8("μGRUMP");
     default: return QString("???");
     }
 }
 
-QString GrumpyCoinUnits::description(int unit)
+QString BitcoinUnits::description(int unit)
 {
     switch(unit)
     {
-    case GRUMP: return QString("GrumpyCoins");
-    case mGRUMP: return QString("Milli-GrumpyCoins (1 / 1,000)");
-    case uGRUMP: return QString("Micro-GrumpyCoins (1 / 1,000,000)");
+    case BTC: return QString("GrumpyCoin");
+    case mBTC: return QString("milliGrumpyCoin (1 / 1,000)");
+    case uBTC: return QString("microGrumpyCoin (1 / 1,000,000)");
     default: return QString("???");
     }
 }
-
-qint64 GrumpyCoinUnits::factor(int unit)
+//a single unit (.00000001) of GrumpyCoin is called a "wander."
+qint64 BitcoinUnits::factor(int unit)
 {
     switch(unit)
     {
-    case GRUMP:  return 100000000;
-    case mGRUMP: return 100000;
-    case uGRUMP: return 100;
+    case BTC:  return 100000000;
+    case mBTC: return 100000;
+    case uBTC: return 100;
     default:   return 100000000;
     }
 }
 
-int GrumpyCoinUnits::amountDigits(int unit)
+int BitcoinUnits::amountDigits(int unit)
 {
     switch(unit)
     {
-    case GRUMP: return 8; // 42,000,000 (# digits, without commas)
-    case mGRUMP: return 11; // 42,000,000,000
-    case uGRUMP: return 14; // 42,000,000,000,000
+    case BTC: return 8; // 21,000,000 (# digits, without commas)
+    case mBTC: return 11; // 21,000,000,000
+    case uBTC: return 14; // 21,000,000,000,000
     default: return 0;
     }
 }
 
-int GrumpyCoinUnits::decimals(int unit)
+int BitcoinUnits::decimals(int unit)
 {
     switch(unit)
     {
-    case GRUMP: return 8;
-    case mGRUMP: return 5;
-    case uGRUMP: return 2;
+    case BTC: return 8;
+    case mBTC: return 5;
+    case uBTC: return 2;
     default: return 0;
     }
 }
 
-QString GrumpyCoinUnits::format(int unit, qint64 n, bool fPlus)
+QString BitcoinUnits::format(int unit, qint64 n, bool fPlus)
 {
     // Note: not using straight sprintf here because we do NOT want
     // localized number formatting.
@@ -99,7 +99,7 @@ QString GrumpyCoinUnits::format(int unit, qint64 n, bool fPlus)
     QString quotient_str = QString::number(quotient);
     QString remainder_str = QString::number(remainder).rightJustified(num_decimals, '0');
 
-    // Right-trim excess zeros after the decimal point
+    // Right-trim excess 0's after the decimal point
     int nTrim = 0;
     for (int i = remainder_str.size()-1; i>=2 && (remainder_str.at(i) == '0'); --i)
         ++nTrim;
@@ -112,12 +112,12 @@ QString GrumpyCoinUnits::format(int unit, qint64 n, bool fPlus)
     return quotient_str + QString(".") + remainder_str;
 }
 
-QString GrumpyCoinUnits::formatWithUnit(int unit, qint64 amount, bool plussign)
+QString BitcoinUnits::formatWithUnit(int unit, qint64 amount, bool plussign)
 {
     return format(unit, amount, plussign) + QString(" ") + name(unit);
 }
 
-bool GrumpyCoinUnits::parse(int unit, const QString &value, qint64 *val_out)
+bool BitcoinUnits::parse(int unit, const QString &value, qint64 *val_out)
 {
     if(!valid(unit) || value.isEmpty())
         return false; // Refuse to parse invalid unit or empty string
@@ -154,13 +154,13 @@ bool GrumpyCoinUnits::parse(int unit, const QString &value, qint64 *val_out)
     return ok;
 }
 
-int GrumpyCoinUnits::rowCount(const QModelIndex &parent) const
+int BitcoinUnits::rowCount(const QModelIndex &parent) const
 {
     Q_UNUSED(parent);
     return unitlist.size();
 }
 
-QVariant GrumpyCoinUnits::data(const QModelIndex &index, int role) const
+QVariant BitcoinUnits::data(const QModelIndex &index, int role) const
 {
     int row = index.row();
     if(row >= 0 && row < unitlist.size())

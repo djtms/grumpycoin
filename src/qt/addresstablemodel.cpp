@@ -11,8 +11,6 @@
 const QString AddressTableModel::Send = "S";
 const QString AddressTableModel::Receive = "R";
 
-extern QFont g_fontHeader;
-
 struct AddressTableEntry
 {
     enum Type {
@@ -63,7 +61,7 @@ public:
             LOCK(wallet->cs_wallet);
             BOOST_FOREACH(const PAIRTYPE(CTxDestination, std::string)& item, wallet->mapAddressBook)
             {
-                const CGrumpyCoinAddress& address = item.first;
+                const CBitcoinAddress& address = item.first;
                 const std::string& strName = item.second;
                 bool fMine = IsMine(*wallet, address.Get());
                 cachedAddressTable.append(AddressTableEntry(fMine ? AddressTableEntry::Receiving : AddressTableEntry::Sending,
@@ -71,8 +69,6 @@ public:
                                   QString::fromStdString(address.ToString())));
             }
         }
-        // qLowerBound() and qUpperBound() require our cachedAddressTable list to be sorted in asc order
-        qSort(cachedAddressTable.begin(), cachedAddressTable.end(), AddressTableEntryLessThan());
     }
 
     void updateEntry(const QString &address, const QString &label, bool isMine, int status)
@@ -194,7 +190,7 @@ QVariant AddressTableModel::data(const QModelIndex &index, int role) const
         QFont font;
         if(index.column() == Address)
         {
-            font = GUIUtil::grumpycoinAddressFont();
+            font = GUIUtil::bitcoinAddressFont();
         }
         return font;
     }
@@ -208,14 +204,11 @@ QVariant AddressTableModel::data(const QModelIndex &index, int role) const
             return Receive;
         default: break;
         }
-    } else if (role == Qt::ForegroundRole)
-    {
-        return QColor(qRgb(171, 127, 130));
     }
     return QVariant();
 }
 
-bool AddressTableModel::setData(const QModelIndex &index, const QVariant &value, int role)
+bool AddressTableModel::setData(const QModelIndex & index, const QVariant & value, int role)
 {
     if(!index.isValid())
         return false;
@@ -228,47 +221,30 @@ bool AddressTableModel::setData(const QModelIndex &index, const QVariant &value,
         switch(index.column())
         {
         case Label:
-            // Do nothing, if old label == new label
-            if(rec->label == value.toString())
-            {
-                editStatus = NO_CHANGES;
-                return false;
-            }
-            wallet->SetAddressBookName(CGrumpyCoinAddress(rec->address.toStdString()).Get(), value.toString().toStdString());
+            wallet->SetAddressBookName(CBitcoinAddress(rec->address.toStdString()).Get(), value.toString().toStdString());
+            rec->label = value.toString();
             break;
         case Address:
-            // Do nothing, if old address == new address
-            if(CGrumpyCoinAddress(rec->address.toStdString()) == CGrumpyCoinAddress(value.toString().toStdString()))
-            {
-                editStatus = NO_CHANGES;
-                return false;
-            }
             // Refuse to set invalid address, set error status and return false
-            else if(!walletModel->validateAddress(value.toString()))
+            if(!walletModel->validateAddress(value.toString()))
             {
                 editStatus = INVALID_ADDRESS;
                 return false;
             }
-            // Check for duplicate addresses to prevent accidental deletion of addresses, if you try
-            // to paste an existing address over another address (with a different label)
-            else if(wallet->mapAddressBook.count(CGrumpyCoinAddress(value.toString().toStdString()).Get()))
-            {
-                editStatus = DUPLICATE_ADDRESS;
-                return false;
-            }
             // Double-check that we're not overwriting a receiving address
-            else if(rec->type == AddressTableEntry::Sending)
+            if(rec->type == AddressTableEntry::Sending)
             {
                 {
                     LOCK(wallet->cs_wallet);
                     // Remove old entry
-                    wallet->DelAddressBookName(CGrumpyCoinAddress(rec->address.toStdString()).Get());
+                    wallet->DelAddressBookName(CBitcoinAddress(rec->address.toStdString()).Get());
                     // Add new entry with new address
-                    wallet->SetAddressBookName(CGrumpyCoinAddress(value.toString().toStdString()).Get(), rec->label.toStdString());
+                    wallet->SetAddressBookName(CBitcoinAddress(value.toString().toStdString()).Get(), rec->label.toStdString());
                 }
             }
             break;
         }
+
         return true;
     }
     return false;
@@ -281,18 +257,12 @@ QVariant AddressTableModel::headerData(int section, Qt::Orientation orientation,
         if(role == Qt::DisplayRole)
         {
             return columns[section];
-        } else if (role == Qt::FontRole)
-        {
-            return g_fontHeader;
-        } else if (role == Qt::SizeHintRole)
-        {
-            return QSize(0, 24);
         }
     }
     return QVariant();
 }
 
-Qt::ItemFlags AddressTableModel::flags(const QModelIndex &index) const
+Qt::ItemFlags AddressTableModel::flags(const QModelIndex & index) const
 {
     if(!index.isValid())
         return 0;
@@ -309,7 +279,7 @@ Qt::ItemFlags AddressTableModel::flags(const QModelIndex &index) const
     return retval;
 }
 
-QModelIndex AddressTableModel::index(int row, int column, const QModelIndex &parent) const
+QModelIndex AddressTableModel::index(int row, int column, const QModelIndex & parent) const
 {
     Q_UNUSED(parent);
     AddressTableEntry *data = priv->index(row);
@@ -325,7 +295,7 @@ QModelIndex AddressTableModel::index(int row, int column, const QModelIndex &par
 
 void AddressTableModel::updateEntry(const QString &address, const QString &label, bool isMine, int status)
 {
-    // Update address book model from GrumpyCoin Core
+    // Update address book model from Bitcoin core
     priv->updateEntry(address, label, isMine, status);
 }
 
@@ -346,7 +316,7 @@ QString AddressTableModel::addRow(const QString &type, const QString &label, con
         // Check for duplicate addresses
         {
             LOCK(wallet->cs_wallet);
-            if(wallet->mapAddressBook.count(CGrumpyCoinAddress(strAddress).Get()))
+            if(wallet->mapAddressBook.count(CBitcoinAddress(strAddress).Get()))
             {
                 editStatus = DUPLICATE_ADDRESS;
                 return QString();
@@ -369,22 +339,21 @@ QString AddressTableModel::addRow(const QString &type, const QString &label, con
             editStatus = KEY_GENERATION_FAILURE;
             return QString();
         }
-        strAddress = CGrumpyCoinAddress(newKey.GetID()).ToString();
+        strAddress = CBitcoinAddress(newKey.GetID()).ToString();
     }
     else
     {
         return QString();
     }
-
     // Add entry
     {
         LOCK(wallet->cs_wallet);
-        wallet->SetAddressBookName(CGrumpyCoinAddress(strAddress).Get(), strLabel);
+        wallet->SetAddressBookName(CBitcoinAddress(strAddress).Get(), strLabel);
     }
     return QString::fromStdString(strAddress);
 }
 
-bool AddressTableModel::removeRows(int row, int count, const QModelIndex &parent)
+bool AddressTableModel::removeRows(int row, int count, const QModelIndex & parent)
 {
     Q_UNUSED(parent);
     AddressTableEntry *rec = priv->index(row);
@@ -396,7 +365,7 @@ bool AddressTableModel::removeRows(int row, int count, const QModelIndex &parent
     }
     {
         LOCK(wallet->cs_wallet);
-        wallet->DelAddressBookName(CGrumpyCoinAddress(rec->address.toStdString()).Get());
+        wallet->DelAddressBookName(CBitcoinAddress(rec->address.toStdString()).Get());
     }
     return true;
 }
@@ -407,7 +376,7 @@ QString AddressTableModel::labelForAddress(const QString &address) const
 {
     {
         LOCK(wallet->cs_wallet);
-        CGrumpyCoinAddress address_parsed(address.toStdString());
+        CBitcoinAddress address_parsed(address.toStdString());
         std::map<CTxDestination, std::string>::iterator mi = wallet->mapAddressBook.find(address_parsed.Get());
         if (mi != wallet->mapAddressBook.end())
         {

@@ -1,25 +1,20 @@
-#include <QApplication>
-
 #include "guiutil.h"
-
 #include "bitcoinaddressvalidator.h"
 #include "walletmodel.h"
 #include "bitcoinunits.h"
-
 #include "util.h"
 #include "init.h"
+#include "base58.h"
 
+#include <QString>
 #include <QDateTime>
 #include <QDoubleValidator>
 #include <QFont>
 #include <QLineEdit>
-#if QT_VERSION >= 0x050000
-#include <QUrlQuery>
-#else
 #include <QUrl>
-#endif
-#include <QTextDocument> // for Qt::mightBeRichText
+#include <QTextDocument> // For Qt::escape
 #include <QAbstractItemView>
+#include <QApplication>
 #include <QClipboard>
 #include <QFileDialog>
 #include <QDesktopServices>
@@ -50,7 +45,7 @@ namespace GUIUtil {
 
 QString dateTimeStr(const QDateTime &date)
 {
-    return date.toString("hh:mm") + QString(", ") + date.date().toString(Qt::SystemLocaleShortDate);
+    return date.date().toString(Qt::SystemLocaleShortDate) + QString(" ") + date.toString("hh:mm");
 }
 
 QString dateTimeStr(qint64 nTime)
@@ -58,20 +53,20 @@ QString dateTimeStr(qint64 nTime)
     return dateTimeStr(QDateTime::fromTime_t((qint32)nTime));
 }
 
-QFont grumpycoinAddressFont()
+QFont bitcoinAddressFont()
 {
     /*Clarv super smash boxoffice hit fix*/
-    QFont font("Finger Paint");
     //QFont font("Monospace");
+    QFont font("Finger Paint");
     font.setStyleHint(QFont::TypeWriter);
     return font;
 }
 
 void setupAddressWidget(QLineEdit *widget, QWidget *parent)
 {
-    widget->setMaxLength(GrumpyCoinAddressValidator::MaxAddressLength);
-    widget->setValidator(new GrumpyCoinAddressValidator(parent));
-    widget->setFont(grumpycoinAddressFont());
+    widget->setMaxLength(BitcoinAddressValidator::MaxAddressLength);
+    widget->setValidator(new BitcoinAddressValidator(parent));
+    widget->setFont(bitcoinAddressFont());
 }
 
 void setupAmountWidget(QLineEdit *widget, QWidget *parent)
@@ -83,22 +78,20 @@ void setupAmountWidget(QLineEdit *widget, QWidget *parent)
     widget->setAlignment(Qt::AlignRight|Qt::AlignVCenter);
 }
 
-bool parseGrumpyCoinURI(const QUrl &uri, SendCoinsRecipient *out)
+bool parseBitcoinURI(const QUrl &uri, SendCoinsRecipient *out)
 {
-    // return if URI is not valid or is no grumpycoin URI
-    if(!uri.isValid() || uri.scheme() != QString("grumpycoin"))
+    if(uri.scheme() != QString("grumpycoin"))
+        return false;
+
+    // check if the address is valid
+    CBitcoinAddress addressFromUri(uri.path().toStdString());
+    if (!addressFromUri.IsValid())
         return false;
 
     SendCoinsRecipient rv;
     rv.address = uri.path();
     rv.amount = 0;
-
-#if QT_VERSION < 0x050000
     QList<QPair<QString, QString> > items = uri.queryItems();
-#else
-    QUrlQuery uriQuery(uri);
-    QList<QPair<QString, QString> > items = uriQuery.queryItems();
-#endif
     for (QList<QPair<QString, QString> >::iterator i = items.begin(); i != items.end(); i++)
     {
         bool fShouldReturnFalse = false;
@@ -117,7 +110,7 @@ bool parseGrumpyCoinURI(const QUrl &uri, SendCoinsRecipient *out)
         {
             if(!i->second.isEmpty())
             {
-                if(!GrumpyCoinUnits::parse(GrumpyCoinUnits::GRUMP, i->second, &rv.amount))
+                if(!BitcoinUnits::parse(BitcoinUnits::BTC, i->second, &rv.amount))
                 {
                     return false;
                 }
@@ -135,27 +128,23 @@ bool parseGrumpyCoinURI(const QUrl &uri, SendCoinsRecipient *out)
     return true;
 }
 
-bool parseGrumpyCoinURI(QString uri, SendCoinsRecipient *out)
+bool parseBitcoinURI(QString uri, SendCoinsRecipient *out)
 {
-    // Convert grumpycoin:// to grumpycoin:
+    // Convert GrumpyCoin:// to GrumpyCoin:
     //
     //    Cannot handle this later, because grumpycoin:// will cause Qt to see the part after // as host,
-    //    which will lower-case it (and thus invalidate the address).
+    //    which will lowercase it (and thus invalidate the address).
     if(uri.startsWith("grumpycoin://"))
     {
-        uri.replace(0, 10, "grumpycoin:");
+        uri.replace(0, 11, "grumpycoin:");
     }
     QUrl uriInstance(uri);
-    return parseGrumpyCoinURI(uriInstance, out);
+    return parseBitcoinURI(uriInstance, out);
 }
 
 QString HtmlEscape(const QString& str, bool fMultiLine)
 {
-#if QT_VERSION < 0x050000
     QString escaped = Qt::escape(str);
-#else
-    QString escaped = str.toHtmlEscaped();
-#endif
     if(fMultiLine)
     {
         escaped = escaped.replace("\n", "<br>\n");
@@ -176,10 +165,8 @@ void copyEntryData(QAbstractItemView *view, int column, int role)
 
     if(!selection.isEmpty())
     {
-        // Copy first item (global clipboard)
-        QApplication::clipboard()->setText(selection.at(0).data(role).toString(), QClipboard::Clipboard);
-        // Copy first item (global mouse selection for e.g. X11 - NOP on Windows)
-        QApplication::clipboard()->setText(selection.at(0).data(role).toString(), QClipboard::Selection);
+        // Copy first item
+        QApplication::clipboard()->setText(selection.at(0).data(role).toString());
     }
 }
 
@@ -192,11 +179,7 @@ QString getSaveFileName(QWidget *parent, const QString &caption,
     QString myDir;
     if(dir.isEmpty()) // Default to user documents location
     {
-#if QT_VERSION < 0x050000
         myDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
-#else
-        myDir = QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation);
-#endif
     }
     else
     {
@@ -235,7 +218,7 @@ QString getSaveFileName(QWidget *parent, const QString &caption,
 
 Qt::ConnectionType blockingGUIThreadConnection()
 {
-    if(QThread::currentThread() != qApp->thread())
+    if(QThread::currentThread() != QCoreApplication::instance()->thread())
     {
         return Qt::BlockingQueuedConnection;
     }
@@ -247,7 +230,7 @@ Qt::ConnectionType blockingGUIThreadConnection()
 
 bool checkPoint(const QPoint &p, const QWidget *w)
 {
-    QWidget *atW = QApplication::widgetAt(w->mapToGlobal(p));
+    QWidget *atW = qApp->widgetAt(w->mapToGlobal(p));
     if (!atW) return false;
     return atW->topLevelWidget() == w;
 }
@@ -441,10 +424,10 @@ bool SetStartOnSystemStartup(bool fAutoStart) { return false; }
 HelpMessageBox::HelpMessageBox(QWidget *parent) :
     QMessageBox(parent)
 {
-    header = tr("GrumpyCoin") + " " + tr("version") + " " +
+    header = tr("grumpycoin-qt") + " " + tr("version") + " " +
         QString::fromStdString(FormatFullVersion()) + "\n\n" +
         tr("Usage:") + "\n" +
-        "  grumpycoin [" + tr("command-line options") + "]                     " + "\n";
+        "  grumpycoin-qt [" + tr("command-line options") + "]                     " + "\n";
 
     coreOptions = QString::fromStdString(HelpMessage());
 
@@ -453,9 +436,9 @@ HelpMessageBox::HelpMessageBox(QWidget *parent) :
         "  -min                   " + tr("Start minimized") + "\n" +
         "  -splash                " + tr("Show splash screen on startup (default: 1)") + "\n";
 
-    setWindowTitle(tr("GrumpyCoin"));
+    setWindowTitle(tr("grumpycoin-qt"));
     setTextFormat(Qt::PlainText);
-    // setMinimumWidth is ignored for QMessageBox so put in non-breaking spaces to make it wider.
+    // setMinimumWidth is ignored for QMessageBox so put in nonbreaking spaces to make it wider.
     setText(header + QString(QChar(0x2003)).repeated(50));
     setDetailedText(coreOptions + "\n" + uiOptions);
 }
@@ -464,13 +447,13 @@ void HelpMessageBox::printToConsole()
 {
     // On other operating systems, the expected action is to print the message to the console.
     QString strUsage = header + "\n" + coreOptions + "\n" + uiOptions;
-    fprintf(stdout, "%s", strUsage.toStdString().c_str());
+    fprintf(stderr, "%s", strUsage.toStdString().c_str());
 }
 
 void HelpMessageBox::showOrPrint()
 {
 #if defined(WIN32)
-        // On Windows, show a message box, as there is no stderr/stdout in windowed applications
+        // On windows, show a message box, as there is no stderr/stdout in windowed applications
         exec();
 #else
         // On other operating systems, print help text to console
@@ -479,3 +462,4 @@ void HelpMessageBox::showOrPrint()
 }
 
 } // namespace GUIUtil
+

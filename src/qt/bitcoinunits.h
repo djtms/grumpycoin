@@ -1,34 +1,32 @@
-#ifndef GRUMPYCOINUNITS_H
-#define GRUMPYCOINUNITS_H
+#ifndef BITCOINUNITS_H
+#define BITCOINUNITS_H
 
 #include <QString>
 #include <QAbstractListModel>
 
-/** GrumpyCoin unit definitions. Encapsulates parsing and formatting
-   and serves as list model for drop-down selection boxes.
+/** Bitcoin unit definitions. Encapsulates parsing and formatting
+   and serves as list model for dropdown selection boxes.
 */
-class GrumpyCoinUnits: public QAbstractListModel
+class BitcoinUnits: public QAbstractListModel
 {
-    Q_OBJECT
-
 public:
-    explicit GrumpyCoinUnits(QObject *parent);
+    explicit BitcoinUnits(QObject *parent);
 
-    /** GrumpyCoin units.
+    /** Bitcoin units.
       @note Source: https://en.bitcoin.it/wiki/Units . Please add only sensible ones
      */
     enum Unit
     {
-        GRUMP,
-        mGRUMP,
-        uGRUMP
+        BTC,
+        mBTC,
+        uBTC
     };
 
     //! @name Static API
     //! Unit conversion and formatting
     ///@{
 
-    //! Get list of units, for drop-down box
+    //! Get list of units, for dropdown box
     static QList<Unit> availableUnits();
     //! Is unit ID valid?
     static bool valid(int unit);
@@ -51,7 +49,7 @@ public:
     ///@}
 
     //! @name AbstractListModel implementation
-    //! List model for unit drop-down selection box.
+    //! List model for unit dropdown selection box.
     ///@{
     enum RoleIndex {
         /** Unit identifier */
@@ -60,10 +58,9 @@ public:
     int rowCount(const QModelIndex &parent) const;
     QVariant data(const QModelIndex &index, int role) const;
     ///@}
-
 private:
-    QList<GrumpyCoinUnits::Unit> unitlist;
+    QList<BitcoinUnits::Unit> unitlist;
 };
-typedef GrumpyCoinUnits::Unit GrumpyCoinUnit;
+typedef BitcoinUnits::Unit BitcoinUnit;
 
-#endif // GRUMPYCOINUNITS_H
+#endif // BITCOINUNITS_H

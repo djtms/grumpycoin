@@ -1,4 +1,4 @@
-grumpycoin               ICON    "pixmaps/bitcoin.ico"
+bitcoin               ICON    "pixmaps/bitcoin.ico"
 
 #include "wx/msw/wx.rc"
 

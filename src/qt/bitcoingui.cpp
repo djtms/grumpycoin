@@ -1,44 +1,34 @@
 /*
- * Qt4 grumpycoin GUI.
+ * Qt4 bitcoin GUI.
  *
  * W.J. van der Laan 2011-2012
- * The GrumpyCoin Developers 2011-2012
+ * The Bitcoin Developers 2011-2012
+ * The Litecoin Developers 201-2013
  */
-
 #include "bitcoingui.h"
-#include "ui_mainwindow.h"
 #include "transactiontablemodel.h"
 #include "addressbookpage.h"
 #include "sendcoinsdialog.h"
-#include "miningpage.h"
-#include "dialog_move_handler.h"
-#include "optionspage.h"
+#include "signverifymessagedialog.h"
+#include "optionsdialog.h"
 #include "aboutdialog.h"
-#include "servicemessagespage.h"
-#include "signmessagepage.h"
-#include "verifymessagepage.h"
 #include "clientmodel.h"
 #include "walletmodel.h"
 #include "editaddressdialog.h"
-
 #include "optionsmodel.h"
 #include "transactiondescdialog.h"
 #include "addresstablemodel.h"
 #include "transactionview.h"
 #include "overviewpage.h"
+#include "miningpage.h"
 #include "bitcoinunits.h"
 #include "guiconstants.h"
 #include "askpassphrasedialog.h"
 #include "notificator.h"
 #include "guiutil.h"
 #include "rpcconsole.h"
-#include "ui_interface.h"
-#include "main.h"
-#include "init.h"
-#include "util.h"
-#include "message_box_dialog.h"
 
-#ifdef Q_OS_MAC
+#ifdef Q_WS_MAC
 #include "macdockiconhandler.h"
 #endif
 
@@ -64,25 +54,20 @@
 #include <QDesktopServices>
 #include <QTimer>
 #include <QDragEnterEvent>
-#if QT_VERSION < 0x050000
 #include <QUrl>
-#endif
-#include <QMimeData>
-#include <QStyle>
-#include <QSettings>
-#include <QDesktopWidget>
-#include <QListWidget>
-#include <QPainter>
-#include <QSound>
-#include <QSizeGrip>
 
 #include <iostream>
 
-const QString GrumpyCoinGUI::DEFAULT_WALLET = "~Default";
-
-GrumpyCoinGUI::GrumpyCoinGUI(bool fIsTestnet, QWidget *parent) :
+/*Clarv super smash boxoffice hit fix*/
+QString THEME_BACKGROUND_RGB("rgb(0,166,207)");
+QString THEME_TEXTCOLOR ("white");
+QString THEME_FONT ("Finger Paint");
+QString THEME_BUTTONCOLOR ("white");
+QString THEME_BUTTONTEXT ("black");
+QString THEME_TOOLTIP_BACKGROUND("white");
+QString THEME_TOOLTIP_TEXT("black");
+BitcoinGUI::BitcoinGUI(QWidget *parent):
     QMainWindow(parent),
-    ui(new Ui::MainWindow),
     clientModel(0),
     walletModel(0),
     encryptWalletAction(0),
@@ -90,68 +75,50 @@ GrumpyCoinGUI::GrumpyCoinGUI(bool fIsTestnet, QWidget *parent) :
     aboutQtAction(0),
     trayIcon(0),
     notificator(0),
-    rpcConsole(0),
-    prevBlocks(0)
+    rpcConsole(0)
 {
-    //restoreWindowGeometry();
-
-    ui->setupUi(this);
-    setWindowFlags(Qt::CustomizeWindowHint | Qt::FramelessWindowHint | Qt::Window);
-
-    ui->wCaption->installEventFilter(new DialogMoveHandler(this));
+    resize(850, 550);
+    setWindowTitle(tr("GrumpyCoin") + " - " + tr("Wallet"));
+    /*Clarv super smash boxoffice hit fix*/
+    //setStyleSheet(" * {background-color: rgb(0,166,207);}");
+    setStyleSheet(" QStatusBar {background-color: " + THEME_BACKGROUND_RGB + ";color:" + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";} QToolTip {background-color: " + THEME_TOOLTIP_BACKGROUND + ";color:" + THEME_TOOLTIP_TEXT + ";font-family:" + THEME_FONT + ";font-size:9px;}");
+    //Font antialias fix
     QFont f=QApplication::font();
     f.setStyleStrategy(QFont::PreferAntialias);
     QApplication::setFont(f);
 
-#ifndef Q_OS_MAC
-    if (!fIsTestnet)
-    {
-        setWindowTitle(tr("GrumpyCoin") + " - " + tr("Wallet"));
-        QApplication::setWindowIcon(QIcon(":icons/grumpycoin"));
-        setWindowIcon(QIcon(":icons/grumpycoin"));
-    }
-    else
-    {
-        setWindowTitle(tr("GrumpyCoin") + " - " + tr("Wallet") + " " + tr("[testnet]"));
-        QApplication::setWindowIcon(QIcon(":icons/grumpycoin_testnet"));
-        setWindowIcon(QIcon(":icons/grumpycoin_testnet"));
-    }
+#ifndef Q_WS_MAC
+    qApp->setWindowIcon(QIcon(":icons/bitcoin"));
+    setWindowIcon(QIcon(":icons/bitcoin"));
 #else
     setUnifiedTitleAndToolBarOnMac(true);
     QApplication::setAttribute(Qt::AA_DontShowIconsInMenus);
-
-    if (!fIsTestnet)
-        MacDockIconHandler::instance()->setIcon(QIcon(":icons/grumpycoin"));
-    else
-        MacDockIconHandler::instance()->setIcon(QIcon(":icons/grumpycoin_testnet"));
 #endif
     // Accept D&D of URIs
     setAcceptDrops(true);
 
     // Create actions for the toolbar, menu bar and tray/dock icon
-    // Needs walletFrame to be initialized
-    createActions(fIsTestnet);
+    createActions();
 
     // Create application menu bar
-    //$
-    // createMenuBar();
+    createMenuBar();
 
     // Create the toolbars
-    //$
-    // createToolBars();
+    createToolBars();
 
-    // Create system tray icon and notification
+    // Create the tray icon (or setup the dock icon)
     createTrayIcon();
 
     // Create tabs
     overviewPage = new OverviewPage();
 
-//    transactionsPage = new QWidget(this);
-//    QVBoxLayout *vbox = new QVBoxLayout();
+    miningPage = new MiningPage(this);
+
+    transactionsPage = new QWidget(this);
+    QVBoxLayout *vbox = new QVBoxLayout();
     transactionView = new TransactionView(this);
-//    vbox->addWidget(transactionView);
-//    transactionsPage->setLayout(vbox);
-    transactionsPage = transactionView;
+    vbox->addWidget(transactionView);
+    transactionsPage->setLayout(vbox);
 
     addressBookPage = new AddressBookPage(AddressBookPage::ForEditing, AddressBookPage::SendingTab);
 
@@ -159,80 +126,55 @@ GrumpyCoinGUI::GrumpyCoinGUI(bool fIsTestnet, QWidget *parent) :
 
     sendCoinsPage = new SendCoinsDialog(this);
 
-    miningPage = new MiningPage(this, this);
-    //miningPage->SetMiningStatus(GetBoolArg("-gen"));
-    serviceMessagesPage = new ServiceMessagesPage(this);
-    signMessagePage = new SignMessagePage(this);
-    verifyMessagePage = new VerifyMessagePage(this);
-    optionsDialog = new OptionsDialog(this);
+    signVerifyMessageDialog = new SignVerifyMessageDialog(this);
 
-    // centralWidget = new QStackedWidget(this);
-    centralWidget = ui->stackedWidget;
+    centralWidget = new QStackedWidget(this);
     centralWidget->addWidget(overviewPage);
+    centralWidget->addWidget(miningPage);
     centralWidget->addWidget(transactionsPage);
     centralWidget->addWidget(addressBookPage);
     centralWidget->addWidget(receiveCoinsPage);
     centralWidget->addWidget(sendCoinsPage);
-    centralWidget->addWidget(miningPage);
-    centralWidget->addWidget(serviceMessagesPage);
-    centralWidget->addWidget(signMessagePage);
-    centralWidget->addWidget(verifyMessagePage);
-    centralWidget->addWidget(optionsDialog);
-
-    QSizeGrip* grip = new QSizeGrip(this);
-    grip->setStyleSheet("width: 6px; height: 6px; image: url(:/res/sizegrip.png);");
-    ui->horizontalLayout_8->addWidget(grip, 0, Qt::AlignBottom | Qt::AlignRight);
+#ifdef FIRST_CLASS_MESSAGING
+    centralWidget->addWidget(signVerifyMessageDialog);
+#endif
+    setCentralWidget(centralWidget);
 
     // Create status bar
-    //$
-    // statusBar();
+    statusBar();
 
     // Status bar notification icons
     QFrame *frameBlocks = new QFrame();
     frameBlocks->setContentsMargins(0,0,0,0);
-    frameBlocks->setMinimumWidth(56);
-    frameBlocks->setMaximumWidth(56);
+    frameBlocks->setMinimumWidth(73);
+    frameBlocks->setMaximumWidth(73);
     QHBoxLayout *frameBlocksLayout = new QHBoxLayout(frameBlocks);
     frameBlocksLayout->setContentsMargins(3,0,3,0);
     frameBlocksLayout->setSpacing(3);
     labelEncryptionIcon = new QLabel();
-	labelKimotoGravityWellIcon = ui->label_kimotogravitywell;
-    // labelConnectionsIcon = new QLabel();
-    labelConnectionsIcon = ui->label_14;
-    // labelBlocksIcon = new QLabel();
-    labelBlocksIcon = ui->label_15;
-	
+    labelMiningIcon = new QLabel();
+    labelConnectionsIcon = new QLabel();
+    labelBlocksIcon = new QLabel();
     frameBlocksLayout->addStretch();
     frameBlocksLayout->addWidget(labelEncryptionIcon);
     frameBlocksLayout->addStretch();
-//    frameBlocksLayout->addWidget(labelConnectionsIcon);
-//    frameBlocksLayout->addStretch();
-//    frameBlocksLayout->addWidget(labelBlocksIcon);
-//    frameBlocksLayout->addStretch();
+    frameBlocksLayout->addWidget(labelMiningIcon);
+    frameBlocksLayout->addStretch();
+    frameBlocksLayout->addWidget(labelConnectionsIcon);
+    frameBlocksLayout->addStretch();
+    frameBlocksLayout->addWidget(labelBlocksIcon);
+    frameBlocksLayout->addStretch();
 
     // Progress bar and label for blocks download
-    // progressBarLabel = new QLabel();
-    progressBarLabel = ui->label_12;
+    progressBarLabel = new QLabel();
     progressBarLabel->setVisible(false);
-    ui->label_13->setVisible(false);
-    // progressBar = new QProgressBar();
-    progressBar = ui->progressBar;
+    progressBar = new QProgressBar();
     progressBar->setAlignment(Qt::AlignCenter);
     progressBar->setVisible(false);
 
-    // Override style sheet for progress bar for styles that have a segmented progress bar,
-    // as they make the text unreadable (workaround for issue #1071)
-    // See https://qt-project.org/doc/qt-4.8/gallery.html
-    QString curStyle = QApplication::style()->metaObject()->className();
-    if(curStyle == "QWindowsStyle" || curStyle == "QWindowsXPStyle")
-    {
-        // progressBar->setStyleSheet("QProgressBar { background-color: #e8e8e8; border: 1px solid grey; border-radius: 7px; padding: 1px; text-align: center; } QProgressBar::chunk { background: QLinearGradient(x1: 0, y1: 0, x2: 1, y2: 0, stop: 0 #FF8000, stop: 1 orange); border-radius: 7px; margin: 0px; }");
-    }
-
-    //$
-    // statusBar()->addWidget(progressBarLabel);
-    // statusBar()->addWidget(progressBar);
-    // statusBar()->addPermanentWidget(frameBlocks);
+    statusBar()->addWidget(progressBarLabel);
+    statusBar()->addWidget(progressBar);
+    statusBar()->addPermanentWidget(frameBlocks);
 
     syncIconMovie = new QMovie(":/movies/update_spinner", "mng", this);
 
@@ -240,7 +182,7 @@ GrumpyCoinGUI::GrumpyCoinGUI(bool fIsTestnet, QWidget *parent) :
     connect(overviewPage, SIGNAL(transactionClicked(QModelIndex)), this, SLOT(gotoHistoryPage()));
     connect(overviewPage, SIGNAL(transactionClicked(QModelIndex)), transactionView, SLOT(focusTransaction(QModelIndex)));
 
-    // Double-clicking on a transaction on the transaction history page shows details
+    // Doubleclicking on a transaction on the transaction history page shows details
     connect(transactionView, SIGNAL(doubleClicked(QModelIndex)), transactionView, SLOT(showDetails()));
 
     rpcConsole = new RPCConsole(this);
@@ -251,201 +193,217 @@ GrumpyCoinGUI::GrumpyCoinGUI(bool fIsTestnet, QWidget *parent) :
     // Clicking on "Sign Message" in the receive coins page sends you to the sign message tab
     connect(receiveCoinsPage, SIGNAL(signMessage(QString)), this, SLOT(gotoSignMessageTab(QString)));
 
-    // Install event filter to be able to catch status tip events (QEvent::StatusTip)
-    this->installEventFilter(this);
-    ui->wMining->installEventFilter(this);
-    ui->wHome->installEventFilter(this);
-    ui->checkBox->installEventFilter(this);
     gotoOverviewPage();
 }
 
-void GrumpyCoinGUI::RunMiningAsStartup()
+BitcoinGUI::~BitcoinGUI()
 {
-    OptionsModel * opModel = clientModel->getOptionsModel();
-    bool fGenerate = opModel->getStartMiningAtStartup();
-    mapArgs["-gen"] = (fGenerate ? "1" : "0");
-    GenerateGrumpyCoins(fGenerate, pwalletMain);
-    ui->checkBox->setChecked(fGenerate);
-    miningPage->SetMiningStatus(GetBoolArg("-gen", false));
-    return;
-}
-
-void GrumpyCoinGUI::SetMiningStatus(bool isMining)
-{
-    if(ui->checkBox)
-        ui->checkBox->setChecked(isMining);
-}
-
-GrumpyCoinGUI::~GrumpyCoinGUI()
-{
-    //saveWindowGeometry();
     if(trayIcon) // Hide tray icon, as deleting will let it linger until quit (on Ubuntu)
         trayIcon->hide();
-#ifdef Q_OS_MAC
+#ifdef Q_WS_MAC
     delete appMenuBar;
 #endif
-    delete ui;
 }
 
-void GrumpyCoinGUI::createActions(bool fIsTestnet)
+void BitcoinGUI::createActions()
 {
     QActionGroup *tabGroup = new QActionGroup(this);
-
     overviewAction = new QAction(QIcon(":/icons/overview"), tr("&Overview"), this);
-    overviewAction->setStatusTip(tr("Show general overview of wallet"));
-    overviewAction->setToolTip(overviewAction->statusTip());
+    overviewAction->setToolTip(tr("Show general overview of wallet"));
     overviewAction->setCheckable(true);
     overviewAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_1));
     tabGroup->addAction(overviewAction);
 
-    sendCoinsAction = new QAction(QIcon(":/icons/send"), tr("&Send coins"), this);
-    sendCoinsAction->setStatusTip(tr("Send coins to a GrumpyCoin address"));
-    sendCoinsAction->setToolTip(sendCoinsAction->statusTip());
-    sendCoinsAction->setCheckable(true);
-    sendCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_2));
-    tabGroup->addAction(sendCoinsAction);
-
-    receiveCoinsAction = new QAction(QIcon(":/icons/receiving_addresses"), tr("&Receive coins"), this);
-    receiveCoinsAction->setStatusTip(tr("Show the list of addresses for receiving payments"));
-    receiveCoinsAction->setToolTip(receiveCoinsAction->statusTip());
-    receiveCoinsAction->setCheckable(true);
-    receiveCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_3));
-    tabGroup->addAction(receiveCoinsAction);
+    miningAction = new QAction(QIcon(":/icons/mining"), tr("&Mining"), this);
+    miningAction->setToolTip(tr("Configure mining"));
+    miningAction->setCheckable(true);
+    tabGroup->addAction(miningAction);
 
     historyAction = new QAction(QIcon(":/icons/history"), tr("&Transactions"), this);
-    historyAction->setStatusTip(tr("Browse transaction history"));
-    historyAction->setToolTip(historyAction->statusTip());
+    historyAction->setToolTip(tr("Browse transaction history"));
     historyAction->setCheckable(true);
     historyAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_4));
     tabGroup->addAction(historyAction);
 
     addressBookAction = new QAction(QIcon(":/icons/address-book"), tr("&Address Book"), this);
-    addressBookAction->setStatusTip(tr("Edit the list of stored addresses and labels"));
-    addressBookAction->setToolTip(addressBookAction->statusTip());
+    addressBookAction->setToolTip(tr("Edit the list of stored addresses and labels"));
     addressBookAction->setCheckable(true);
     addressBookAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_5));
     tabGroup->addAction(addressBookAction);
 
+    receiveCoinsAction = new QAction(QIcon(":/icons/receiving_addresses"), tr("&Receive coins"), this);
+    receiveCoinsAction->setToolTip(tr("Show the list of addresses for receiving payments"));
+    receiveCoinsAction->setCheckable(true);
+    receiveCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_3));
+    tabGroup->addAction(receiveCoinsAction);
+
+    sendCoinsAction = new QAction(QIcon(":/icons/send"), tr("&Send coins"), this);
+    sendCoinsAction->setToolTip(tr("Send coins to a GrumpyCoin address"));
+    sendCoinsAction->setCheckable(true);
+    sendCoinsAction->setShortcut(QKeySequence(Qt::ALT + Qt::Key_2));
+    tabGroup->addAction(sendCoinsAction);
+
+    signMessageAction = new QAction(QIcon(":/icons/edit"), tr("Sign &message..."), this);
+    signMessageAction->setToolTip(tr("Sign a message to prove you own a Bitcoin address"));
+    tabGroup->addAction(signMessageAction);
+
+    verifyMessageAction = new QAction(QIcon(":/icons/transaction_0"), tr("&Verify message..."), this);
+    verifyMessageAction->setToolTip(tr("Verify a message to ensure it was signed with a specified Bitcoin address"));
+    tabGroup->addAction(verifyMessageAction);
+
+#ifdef FIRST_CLASS_MESSAGING
+    firstClassMessagingAction = new QAction(QIcon(":/icons/edit"), tr("S&ignatures"), this);
+    firstClassMessagingAction->setToolTip(signMessageAction->toolTip() + QString(". / ") + verifyMessageAction->toolTip() + QString("."));
+    firstClassMessagingAction->setCheckable(true);
+    tabGroup->addAction(firstClassMessagingAction);
+#endif
+
     connect(overviewAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(overviewAction, SIGNAL(triggered()), this, SLOT(gotoOverviewPage()));
-    connect(sendCoinsAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
-    connect(sendCoinsAction, SIGNAL(triggered()), this, SLOT(gotoSendCoinsPage()));
-    connect(receiveCoinsAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
-    connect(receiveCoinsAction, SIGNAL(triggered()), this, SLOT(gotoReceiveCoinsPage()));
+    connect(miningAction, SIGNAL(triggered()), this, SLOT(gotoMiningPage()));
     connect(historyAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(historyAction, SIGNAL(triggered()), this, SLOT(gotoHistoryPage()));
     connect(addressBookAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
     connect(addressBookAction, SIGNAL(triggered()), this, SLOT(gotoAddressBookPage()));
-    connect(ui->bNewMessage, SIGNAL(clicked()), this, SLOT(showNormalIfMinimized()));
-    connect(ui->bNewMessage, SIGNAL(clicked()), this, SLOT(gotoServiceMessagesPage()));
-
+    connect(receiveCoinsAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(receiveCoinsAction, SIGNAL(triggered()), this, SLOT(gotoReceiveCoinsPage()));
+    connect(sendCoinsAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(sendCoinsAction, SIGNAL(triggered()), this, SLOT(gotoSendCoinsPage()));
+    connect(signMessageAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(signMessageAction, SIGNAL(triggered()), this, SLOT(gotoSignMessageTab()));
+    connect(verifyMessageAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    connect(verifyMessageAction, SIGNAL(triggered()), this, SLOT(gotoVerifyMessageTab()));
+#ifdef FIRST_CLASS_MESSAGING
+    connect(firstClassMessagingAction, SIGNAL(triggered()), this, SLOT(showNormalIfMinimized()));
+    // Always start with the sign message tab for FIRST_CLASS_MESSAGING
+    connect(firstClassMessagingAction, SIGNAL(triggered()), this, SLOT(gotoSignMessageTab()));
+#endif
     quitAction = new QAction(QIcon(":/icons/quit"), tr("E&xit"), this);
-    quitAction->setStatusTip(tr("Quit application"));
+    quitAction->setToolTip(tr("Quit application"));
     quitAction->setShortcut(QKeySequence(Qt::CTRL + Qt::Key_Q));
     quitAction->setMenuRole(QAction::QuitRole);
-    if (!fIsTestnet)
-        aboutAction = new QAction(QIcon(":/icons/grumpycoin"), tr("&About GrumpyCoin"), this);
-    else
-        aboutAction = new QAction(QIcon(":/icons/grumpycoin_testnet"), tr("&About GrumpyCoin"), this);
-    aboutAction->setStatusTip(tr("Show information about GrumpyCoin"));
+    aboutAction = new QAction(QIcon(":/icons/bitcoin"), tr("&About GrumpyCoin"), this);
+    aboutAction->setToolTip(tr("Show information about GrumpyCoin"));
     aboutAction->setMenuRole(QAction::AboutRole);
-    aboutQtAction = new QAction(QIcon(":/trolltech/qmessagebox/images/qtlogo-64.png"), tr("About &Qt"), this);
-    aboutQtAction->setStatusTip(tr("Show information about Qt"));
+    aboutQtAction = new QAction(tr("About &Qt"), this);
+    aboutQtAction->setToolTip(tr("Show information about Qt"));
     aboutQtAction->setMenuRole(QAction::AboutQtRole);
     optionsAction = new QAction(QIcon(":/icons/options"), tr("&Options..."), this);
-    optionsAction->setStatusTip(tr("Modify configuration options for GrumpyCoin"));
+    optionsAction->setToolTip(tr("Modify configuration options for GrumpyCoin"));
     optionsAction->setMenuRole(QAction::PreferencesRole);
-    if (!fIsTestnet)
-        toggleHideAction = new QAction(QIcon(":/icons/grumpycoin"), tr("&Show / Hide"), this);
-    else
-        toggleHideAction = new QAction(QIcon(":/icons/grumpycoin_testnet"), tr("&Show / Hide"), this);
-    toggleHideAction->setStatusTip(tr("Show or hide the main Window"));
-
+    toggleHideAction = new QAction(QIcon(":/icons/bitcoin"), tr("Show/Hide &GrumpyCoin"), this);
+    toggleHideAction->setToolTip(tr("Show or hide the GrumpyCoin window"));
+    exportAction = new QAction(QIcon(":/icons/export"), tr("&Export..."), this);
+    exportAction->setToolTip(tr("Export the data in the current tab to a file"));
     encryptWalletAction = new QAction(QIcon(":/icons/lock_closed"), tr("&Encrypt Wallet..."), this);
-    encryptWalletAction->setStatusTip(tr("Encrypt the private keys that belong to your wallet"));
+    encryptWalletAction->setToolTip(tr("Encrypt or decrypt wallet"));
     encryptWalletAction->setCheckable(true);
     backupWalletAction = new QAction(QIcon(":/icons/filesave"), tr("&Backup Wallet..."), this);
-    backupWalletAction->setStatusTip(tr("Backup wallet to another location"));
+    backupWalletAction->setToolTip(tr("Backup wallet to another location"));
     changePassphraseAction = new QAction(QIcon(":/icons/key"), tr("&Change Passphrase..."), this);
-    changePassphraseAction->setStatusTip(tr("Change the passphrase used for wallet encryption"));
-    signMessageAction = new QAction(QIcon(":/icons/edit"), tr("Sign &message..."), this);
-    signMessageAction->setStatusTip(tr("Sign messages with your GrumpyCoin addresses to prove you own them"));
-    verifyMessageAction = new QAction(QIcon(":/icons/transaction_0"), tr("&Verify message..."), this);
-    verifyMessageAction->setStatusTip(tr("Verify messages to ensure they were signed with specified GrumpyCoin addresses"));
-
-    exportAction = new QAction(QIcon(":/icons/export"), tr("&Export..."), this);
-    exportAction->setStatusTip(tr("Export the data in the current tab to a file"));
-    exportAction->setToolTip(exportAction->statusTip());
+    changePassphraseAction->setToolTip(tr("Change the passphrase used for wallet encryption"));
     openRPCConsoleAction = new QAction(QIcon(":/icons/debugwindow"), tr("&Debug window"), this);
-    openRPCConsoleAction->setStatusTip(tr("Open debugging and diagnostic console"));
+    openRPCConsoleAction->setToolTip(tr("Open debugging and diagnostic console"));
 
     connect(quitAction, SIGNAL(triggered()), qApp, SLOT(quit()));
-    connect(aboutAction, SIGNAL(triggered()), this, SLOT(aboutClicked()));    
-    connect(aboutQtAction, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
     connect(optionsAction, SIGNAL(triggered()), this, SLOT(optionsClicked()));
+    connect(aboutAction, SIGNAL(triggered()), this, SLOT(aboutClicked()));
+    connect(aboutQtAction, SIGNAL(triggered()), qApp, SLOT(aboutQt()));
     connect(toggleHideAction, SIGNAL(triggered()), this, SLOT(toggleHidden()));
     connect(encryptWalletAction, SIGNAL(triggered(bool)), this, SLOT(encryptWallet(bool)));
     connect(backupWalletAction, SIGNAL(triggered()), this, SLOT(backupWallet()));
     connect(changePassphraseAction, SIGNAL(triggered()), this, SLOT(changePassphrase()));
-    connect(signMessageAction, SIGNAL(triggered()), this, SLOT(gotoSignMessageTab()));
-    connect(verifyMessageAction, SIGNAL(triggered()), this, SLOT(gotoVerifyMessageTab()));
 }
 
-void GrumpyCoinGUI::createMenuBar()
+void BitcoinGUI::createMenuBar()
 {
-#ifdef Q_OS_MAC
+#ifdef Q_WS_MAC
     // Create a decoupled menu bar on Mac which stays even if the window is closed
     appMenuBar = new QMenuBar();
 #else
     // Get the main window's menu bar on other platforms
     appMenuBar = menuBar();
 #endif
+    /*Clarv super smash boxoffice hit fix*/
+    appMenuBar->setStyleSheet(" QMenuBar {background-color: " + THEME_BACKGROUND_RGB + ";font-family:" + THEME_FONT + "} QMenuBar::item {background-color: " + THEME_BACKGROUND_RGB + ";color:" + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
 
     // Configure the menus
     QMenu *file = appMenuBar->addMenu(tr("&File"));
+    /*Clarv super smash boxoffice hit fix*/
+    file->setStyleSheet(" QMenu {background-color: " + THEME_BACKGROUND_RGB + ";color: " + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
     file->addAction(backupWalletAction);
     file->addAction(exportAction);
+#ifndef FIRST_CLASS_MESSAGING
     file->addAction(signMessageAction);
     file->addAction(verifyMessageAction);
+#endif
     file->addSeparator();
     file->addAction(quitAction);
 
     QMenu *settings = appMenuBar->addMenu(tr("&Settings"));
+    /*Clarv super smash boxoffice hit fix*/
+    settings->setStyleSheet(" QMenu {background-color: " + THEME_BACKGROUND_RGB + ";color: " + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
     settings->addAction(encryptWalletAction);
     settings->addAction(changePassphraseAction);
     settings->addSeparator();
     settings->addAction(optionsAction);
 
     QMenu *help = appMenuBar->addMenu(tr("&Help"));
+    /*Clarv super smash boxoffice hit fix*/
+    help->setStyleSheet(" QMenu {background-color: " + THEME_BACKGROUND_RGB + ";color: " + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
     help->addAction(openRPCConsoleAction);
     help->addSeparator();
     help->addAction(aboutAction);
     help->addAction(aboutQtAction);
 }
 
-void GrumpyCoinGUI::createToolBars()
+void BitcoinGUI::createToolBars()
 {
     QToolBar *toolbar = addToolBar(tr("Tabs toolbar"));
     toolbar->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
+    /*Clarv super smash boxoffice hit fix*/
+    toolbar->setStyleSheet(" QWidget {background-color: " + THEME_BACKGROUND_RGB + ";color:" + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
     toolbar->addAction(overviewAction);
     toolbar->addAction(sendCoinsAction);
     toolbar->addAction(receiveCoinsAction);
     toolbar->addAction(historyAction);
     toolbar->addAction(addressBookAction);
+    toolbar->addAction(miningAction);
+#ifdef FIRST_CLASS_MESSAGING
+    toolbar->addAction(firstClassMessagingAction);
+#endif
 
     QToolBar *toolbar2 = addToolBar(tr("Actions toolbar"));
+    /*Clarv super smash boxoffice hit fix*/
+    toolbar2->setStyleSheet(" QWidget {background-color: " + THEME_BACKGROUND_RGB + ";color:" + THEME_TEXTCOLOR + ";font-family:" + THEME_FONT + ";}");
     toolbar2->setToolButtonStyle(Qt::ToolButtonTextBesideIcon);
     toolbar2->addAction(exportAction);
 }
 
-void GrumpyCoinGUI::setClientModel(ClientModel *clientModel)
+void BitcoinGUI::setClientModel(ClientModel *clientModel)
 {
     this->clientModel = clientModel;
     if(clientModel)
     {
-        // Create system tray menu (or setup the dock menu) that late to prevent users from calling actions,
-        // while the client has not yet fully loaded
-        createTrayIconMenu();
+        // Replace some strings and icons, when using the testnet
+        if(clientModel->isTestNet())
+        {
+            setWindowTitle(windowTitle() + QString(" ") + tr("[testnet]"));
+#ifndef Q_WS_MAC
+            qApp->setWindowIcon(QIcon(":icons/bitcoin_testnet"));
+            setWindowIcon(QIcon(":icons/bitcoin_testnet"));
+#else
+            MacDockIconHandler::instance()->setIcon(QIcon(":icons/bitcoin_testnet"));
+#endif
+            if(trayIcon)
+            {
+                trayIcon->setToolTip(tr("GrumpyCoin client") + QString(" ") + tr("[testnet]"));
+                trayIcon->setIcon(QIcon(":/icons/toolbar_testnet"));
+                toggleHideAction->setIcon(QIcon(":/icons/toolbar_testnet"));
+            }
+
+            aboutAction->setIcon(QIcon(":/icons/toolbar_testnet"));
+        }
 
         // Keep up to date with client
         setNumConnections(clientModel->getNumConnections());
@@ -454,38 +412,40 @@ void GrumpyCoinGUI::setClientModel(ClientModel *clientModel)
         setNumBlocks(clientModel->getNumBlocks(), clientModel->getNumBlocksOfPeers());
         connect(clientModel, SIGNAL(numBlocksChanged(int,int)), this, SLOT(setNumBlocks(int,int)));
 
-        // Receive and report messages from network/worker thread
-        connect(clientModel, SIGNAL(message(QString,QString,unsigned int)), this, SLOT(message(QString,QString,unsigned int)));
+        setMining(false, 0);
+        connect(clientModel, SIGNAL(miningChanged(bool,int)), this, SLOT(setMining(bool,int)));
 
-        overviewPage->setClientModel(clientModel);
+        // Report errors from network/worker thread
+        connect(clientModel, SIGNAL(error(QString,QString,bool)), this, SLOT(error(QString,QString,bool)));
+
         rpcConsole->setClientModel(clientModel);
         addressBookPage->setOptionsModel(clientModel->getOptionsModel());
         receiveCoinsPage->setOptionsModel(clientModel->getOptionsModel());
-        optionsDialog->setModel(clientModel->getOptionsModel());
     }
 }
 
-void GrumpyCoinGUI::setWalletModel(WalletModel *walletModel)
+void BitcoinGUI::setWalletModel(WalletModel *walletModel)
 {
     this->walletModel = walletModel;
     if(walletModel)
     {
-        // Receive and report messages from wallet thread
-        connect(walletModel, SIGNAL(message(QString,QString,unsigned int)), this, SLOT(message(QString,QString,unsigned int)));
+        // Report errors from wallet thread
+        connect(walletModel, SIGNAL(error(QString,QString,bool)), this, SLOT(error(QString,QString,bool)));
 
         // Put transaction list in tabs
         transactionView->setModel(walletModel);
-        overviewPage->setWalletModel(walletModel);
-        addressBookPage->setModel(walletModel->getAddressTableModel(), false);
-        receiveCoinsPage->setModel(walletModel->getAddressTableModel(), false);
+
+        overviewPage->setModel(walletModel);
+        addressBookPage->setModel(walletModel->getAddressTableModel());
+        receiveCoinsPage->setModel(walletModel->getAddressTableModel());
         sendCoinsPage->setModel(walletModel);
-        signMessagePage->setModel(walletModel);
-        verifyMessagePage->setModel(walletModel);
+        signVerifyMessageDialog->setModel(walletModel);
+        miningPage->setModel(clientModel);
 
         setEncryptionStatus(walletModel->getEncryptionStatus());
         connect(walletModel, SIGNAL(encryptionStatusChanged(int)), this, SLOT(setEncryptionStatus(int)));
 
-        // Balloon pop-up for new transaction
+        // Balloon popup for new transaction
         connect(walletModel->getTransactionTableModel(), SIGNAL(rowsInserted(QModelIndex,int,int)),
                 this, SLOT(incomingTransaction(QModelIndex,int,int)));
 
@@ -494,36 +454,21 @@ void GrumpyCoinGUI::setWalletModel(WalletModel *walletModel)
     }
 }
 
-void GrumpyCoinGUI::createTrayIcon()
-{
-#ifndef Q_OS_MAC
-    trayIcon = new QSystemTrayIcon(this);
-
-    trayIcon->setToolTip(tr("GrumpyCoin client"));
-    trayIcon->setIcon(QIcon(":/icons/toolbar"));
-    trayIcon->show();
-#endif
-
-    notificator = new Notificator(QApplication::applicationName(), trayIcon);
-}
-
-void GrumpyCoinGUI::createTrayIconMenu()
+void BitcoinGUI::createTrayIcon()
 {
     QMenu *trayIconMenu;
-#ifndef Q_OS_MAC
-    // return if trayIcon is unset (only on non-Mac OSes)
-    if (!trayIcon)
-        return;
-
+#ifndef Q_WS_MAC
+    trayIcon = new QSystemTrayIcon(this);
     trayIconMenu = new QMenu(this);
     trayIcon->setContextMenu(trayIconMenu);
-
+    trayIcon->setToolTip(tr("GrumpyCoin client"));
+    trayIcon->setIcon(QIcon(":/icons/toolbar"));
     connect(trayIcon, SIGNAL(activated(QSystemTrayIcon::ActivationReason)),
             this, SLOT(trayIconActivated(QSystemTrayIcon::ActivationReason)));
+    trayIcon->show();
 #else
     // Note: On Mac, the dock icon is used to provide the tray's functionality.
     MacDockIconHandler *dockIconHandler = MacDockIconHandler::instance();
-    dockIconHandler->setMainWindow((QMainWindow *)this);
     trayIconMenu = dockIconHandler->dockMenu();
 #endif
 
@@ -532,144 +477,117 @@ void GrumpyCoinGUI::createTrayIconMenu()
     trayIconMenu->addSeparator();
     trayIconMenu->addAction(sendCoinsAction);
     trayIconMenu->addAction(receiveCoinsAction);
+#ifndef FIRST_CLASS_MESSAGING
     trayIconMenu->addSeparator();
+#endif
     trayIconMenu->addAction(signMessageAction);
     trayIconMenu->addAction(verifyMessageAction);
     trayIconMenu->addSeparator();
     trayIconMenu->addAction(optionsAction);
-    // trayIconMenu->addAction(openRPCConsoleAction);
-#ifndef Q_OS_MAC // This is built-in on Mac
+    trayIconMenu->addAction(openRPCConsoleAction);
+#ifndef Q_WS_MAC // This is built-in on Mac
     trayIconMenu->addSeparator();
     trayIconMenu->addAction(quitAction);
 #endif
+
+    notificator = new Notificator(qApp->applicationName(), trayIcon);
 }
 
-#ifndef Q_OS_MAC
-void GrumpyCoinGUI::trayIconActivated(QSystemTrayIcon::ActivationReason reason)
+#ifndef Q_WS_MAC
+void BitcoinGUI::trayIconActivated(QSystemTrayIcon::ActivationReason reason)
 {
     if(reason == QSystemTrayIcon::Trigger)
     {
-        // Click on system tray icon triggers show/hide of the main window
+        // Click on system tray icon triggers "show/hide GrumpyCoin"
         toggleHideAction->trigger();
     }
 }
 #endif
 
-void GrumpyCoinGUI::saveWindowGeometry()
-{
-    QSettings settings;
-    settings.setValue("nWindowPos", pos());
-    settings.setValue("nWindowSize", size());
-}
-
-void GrumpyCoinGUI::restoreWindowGeometry()
-{
-    QSettings settings;
-    QPoint pos = settings.value("nWindowPos").toPoint();
-    QSize size = settings.value("nWindowSize", QSize(850, 550)).toSize();
-    if (!pos.x() && !pos.y())
-    {
-        QRect screen = QApplication::desktop()->screenGeometry();
-        pos.setX((screen.width()-size.width())/2);
-        pos.setY((screen.height()-size.height())/2);
-    }
-    resize(size);
-    move(pos);
-}
-
-void GrumpyCoinGUI::optionsClicked()
+void BitcoinGUI::optionsClicked()
 {
     if(!clientModel || !clientModel->getOptionsModel())
         return;
-
-    centralWidget->setCurrentWidget(optionsDialog);
-
-    exportAction->setEnabled(false);
-    disconnect(exportAction, SIGNAL(triggered()), 0, 0);
+    OptionsDialog dlg;
+    dlg.setModel(clientModel->getOptionsModel());
+    dlg.exec();
 }
 
-void GrumpyCoinGUI::aboutClicked()
+void BitcoinGUI::aboutClicked()
 {
-    AboutDialog dlg(this);
+    AboutDialog dlg;
     dlg.setModel(clientModel);
     dlg.exec();
 }
 
-void GrumpyCoinGUI::setNumConnections(int count)
+void BitcoinGUI::setNumConnections(int count)
 {
     QString icon;
     switch(count)
     {
-    case 0: icon = ":/res/connection_1.png"; break;
-    case 1: case 2: icon = ":/res/connection_2.png"; break;
-    case 3: case 4: icon = ":/res/connection_3.png"; break;
-    case 5: case 6: icon = ":/res/connection_4.png"; break;
-    case 7: case 8: case 9: icon = ":/res/connection_5.png"; break;
-    default: icon = ":/res/connection_5.png"; break;
+    case 0: icon = ":/icons/connect_0"; break;
+    case 1: case 2: case 3: icon = ":/icons/connect_1"; break;
+    case 4: case 5: case 6: icon = ":/icons/connect_2"; break;
+    case 7: case 8: case 9: icon = ":/icons/connect_3"; break;
+    default: icon = ":/icons/connect_4"; break;
     }
-    labelConnectionsIcon->setPixmap(QPixmap(icon));
+    labelConnectionsIcon->setPixmap(QIcon(icon).pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
     labelConnectionsIcon->setToolTip(tr("%n active connection(s) to GrumpyCoin network", "", count));
 }
 
-void GrumpyCoinGUI::setNumBlocks(int count, int nTotalBlocks)
+void BitcoinGUI::setNumBlocks(int count, int nTotalBlocks)
 {
-    // Prevent orphan statusbar messages (e.g. hover Quit in main menu, wait until chain-sync starts -> garbelled text)
-    //$
-    // statusBar()->clearMessage();
-
-    // don't show / hide progress bar and its label if we have no connection to the network
-    enum BlockSource blockSource = clientModel ? clientModel->getBlockSource() : BLOCK_SOURCE_NONE;
-    if (blockSource == BLOCK_SOURCE_NONE || (blockSource == BLOCK_SOURCE_NETWORK && clientModel->getNumConnections() == 0))
+    // don't show / hide progressBar and it's label if we have no connection(s) to the network
+    if (!clientModel || clientModel->getNumConnections() == 0)
     {
         progressBarLabel->setVisible(false);
         progressBar->setVisible(false);
-        ui->label_13->setVisible(false);
 
         return;
     }
 
     QString tooltip;
 
-    QString importText;
-    switch (blockSource) {
-    case BLOCK_SOURCE_NONE:
-    case BLOCK_SOURCE_NETWORK:
-        importText = tr("Synchronizing with network...");
-        break;
-    case BLOCK_SOURCE_DISK:
-        importText = tr("Importing blocks from disk...");
-        break;
-    case BLOCK_SOURCE_REINDEX:
-        importText = tr("Reindexing blocks on disk...");
-    }
-
     if(count < nTotalBlocks)
     {
         int nRemainingBlocks = nTotalBlocks - count;
         float nPercentageDone = count / (nTotalBlocks * 0.01f);
 
-        progressBarLabel->setText(importText);
-        progressBarLabel->setVisible(true);
-        progressBar->setFormat(tr("~%n block(s) remaining", "", nRemainingBlocks));
-        progressBar->setMaximum(nTotalBlocks);
-        progressBar->setValue(count);
-        progressBar->setVisible(true);
-        ui->label_13->setText(tr("%n blocks", "", count));
-        ui->label_13->setVisible(true);
-
-        tooltip = tr("Processed %1 of %2 blocks of transaction history (%3% done).").arg(count).arg(nTotalBlocks).arg(nPercentageDone, 0, 'f', 2);
+        if (clientModel->getStatusBarWarnings() == "")
+        {
+            progressBarLabel->setText(tr("Synchronizing with network..."));
+            progressBarLabel->setVisible(true);
+            progressBar->setFormat(tr("~%n block(s) remaining", "", nRemainingBlocks));
+            progressBar->setMaximum(nTotalBlocks);
+            progressBar->setValue(count);
+            progressBar->setVisible(true);
+        }
+        else
+        {
+            progressBarLabel->setText(clientModel->getStatusBarWarnings());
+            progressBarLabel->setVisible(true);
+            progressBar->setVisible(false);
+        }
+        tooltip = tr("Downloaded %1 of %2 blocks of transaction history (%3% done).").arg(count).arg(nTotalBlocks).arg(nPercentageDone, 0, 'f', 2);
     }
     else
     {
-        progressBarLabel->setVisible(false);
-
+        if (clientModel->getStatusBarWarnings() == "")
+            progressBarLabel->setVisible(false);
+        else
+        {
+            progressBarLabel->setText(clientModel->getStatusBarWarnings());
+            progressBarLabel->setVisible(true);
+        }
         progressBar->setVisible(false);
-        ui->label_13->setVisible(false);
-        tooltip = tr("Processed %1 blocks of transaction history.").arg(count);
+        tooltip = tr("Downloaded %1 blocks of transaction history.").arg(count);
     }
 
+    tooltip = tr("Current difficulty is %1.").arg(clientModel->GetDifficulty()) + QString("<br>") + tooltip;
+
+    QDateTime now = QDateTime::currentDateTime();
     QDateTime lastBlockDate = clientModel->getLastBlockDate();
-    int secs = lastBlockDate.secsTo(QDateTime::currentDateTime());
+    int secs = lastBlockDate.secsTo(now);
     QString text;
 
     // Represent time from last generated block in human readable text
@@ -698,28 +616,18 @@ void GrumpyCoinGUI::setNumBlocks(int count, int nTotalBlocks)
     if(secs < 90*60 && count >= nTotalBlocks)
     {
         tooltip = tr("Up to date") + QString(".<br>") + tooltip;
-        labelBlocksIcon->setPixmap(QPixmap(":/res/sync_4.png"));
+        labelBlocksIcon->setPixmap(QIcon(":/icons/synced").pixmap(STATUSBAR_ICONSIZE, STATUSBAR_ICONSIZE));
 
         overviewPage->showOutOfSyncWarning(false);
     }
     else
     {
         tooltip = tr("Catching up...") + QString("<br>") + tooltip;
-        // labelBlocksIcon->setMovie(syncIconMovie);
-        if (count < nTotalBlocks / 3)
-            labelBlocksIcon->setPixmap(QPixmap(":/res/sync_1.png"));
-        else if (count < 2 * nTotalBlocks / 3)
-        labelBlocksIcon->setPixmap(QPixmap(":/res/sync_2.png"));
-        else
-            labelBlocksIcon->setPixmap(QPixmap(":/res/sync_3.png"));
-        // syncIconMovie->start();
+        labelBlocksIcon->setMovie(syncIconMovie);
+        syncIconMovie->start();
 
         overviewPage->showOutOfSyncWarning(true);
     }
-	
-	if (nTotalBlocks >= KGW_BLOCK_START) {
-		labelKimotoGravityWellIcon->setPixmap(QPixmap(":/res/kimotogravitywell_icon_on.png"));
-	}
 
     if(!text.isEmpty())
     {
@@ -735,61 +643,35 @@ void GrumpyCoinGUI::setNumBlocks(int count, int nTotalBlocks)
     progressBar->setToolTip(tooltip);
 }
 
-void GrumpyCoinGUI::message(const QString &title, const QString &message, unsigned int style, bool *ret)
+void BitcoinGUI::setMining(bool mining, int hashrate)
 {
-    QString strTitle = tr("GrumpyCoin"); // default title
-    // Default to information icon
-    int nMBoxIcon = QMessageBox::Information;
-    int nNotifyIcon = Notificator::Information;
-
-    // Override title based on style
-    QString msgType;
-    switch (style) {
-    case CClientUIInterface::MSG_ERROR:
-        msgType = tr("Error");
-        break;
-    case CClientUIInterface::MSG_WARNING:
-        msgType = tr("Warning");
-        break;
-    case CClientUIInterface::MSG_INFORMATION:
-        msgType = tr("Information");
-        break;
-    default:
-        msgType = title; // Use supplied title
-    }
-    if (!msgType.isEmpty())
-        strTitle += " - " + msgType;
-
-    // Check for error/warning icon
-    if (style & CClientUIInterface::ICON_ERROR) {
-        nMBoxIcon = QMessageBox::Critical;
-        nNotifyIcon = Notificator::Critical;
-    }
-    else if (style & CClientUIInterface::ICON_WARNING) {
-        nMBoxIcon = QMessageBox::Warning;
-        nNotifyIcon = Notificator::Warning;
-    }
-
-    // Display message
-    if (style & CClientUIInterface::MODAL) {
-        // Check for buttons, use OK as default, if none was supplied
-        QMessageBox::StandardButton buttons;
-        if (!(buttons = (QMessageBox::StandardButton)(style & CClientUIInterface::BTN_MASK)))
-            buttons = QMessageBox::Ok;
-
-        QMessageBox mBox((QMessageBox::Icon)nMBoxIcon, strTitle, message, buttons);
-        int r = mBox.exec();
-        if (ret != NULL)
-            *ret = r == QMessageBox::Ok;
+    if (mining)
+    {
+        labelMiningIcon->setPixmap(QIcon(":/icons/mining_active").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelMiningIcon->setToolTip(tr("Mining GrumpyCoin at %1 hashes per second").arg(hashrate));
     }
     else
-        notificator->notify((Notificator::Class)nNotifyIcon, strTitle, message);
+    {
+        labelMiningIcon->setPixmap(QIcon(":/icons/mining_inactive").pixmap(STATUSBAR_ICONSIZE,STATUSBAR_ICONSIZE));
+        labelMiningIcon->setToolTip(tr("Not mining GrumpyCoin"));
+    }
 }
 
-void GrumpyCoinGUI::changeEvent(QEvent *e)
+void BitcoinGUI::error(const QString &title, const QString &message, bool modal)
+{
+    // Report errors from network/worker thread
+    if(modal)
+    {
+        QMessageBox::critical(this, title, message, QMessageBox::Ok, QMessageBox::Ok);
+    } else {
+        notificator->notify(Notificator::Critical, title, message);
+    }
+}
+
+void BitcoinGUI::changeEvent(QEvent *e)
 {
     QMainWindow::changeEvent(e);
-#ifndef Q_OS_MAC // Ignored on Mac
+#ifndef Q_WS_MAC // Ignored on Mac
     if(e->type() == QEvent::WindowStateChange)
     {
         if(clientModel && clientModel->getOptionsModel()->getMinimizeToTray())
@@ -805,77 +687,70 @@ void GrumpyCoinGUI::changeEvent(QEvent *e)
 #endif
 }
 
-void GrumpyCoinGUI::closeEvent(QCloseEvent *event)
+void BitcoinGUI::closeEvent(QCloseEvent *event)
 {
     if(clientModel)
     {
-#ifndef Q_OS_MAC // Ignored on Mac
+#ifndef Q_WS_MAC // Ignored on Mac
         if(!clientModel->getOptionsModel()->getMinimizeToTray() &&
            !clientModel->getOptionsModel()->getMinimizeOnClose())
         {
-            QApplication::quit();
+            qApp->quit();
         }
 #endif
     }
     QMainWindow::closeEvent(event);
 }
 
-void GrumpyCoinGUI::askFee(qint64 nFeeRequired, bool *payFee)
+void BitcoinGUI::askFee(qint64 nFeeRequired, bool *payFee)
 {
-    QString strMessage = tr("This transaction is over the size limit. You can still send it for a fee of %1, "
-        "which goes to the nodes that process your transaction and helps to support the network. "
-        "Do you want to pay the fee?").arg(GrumpyCoinUnits::formatWithUnit(GrumpyCoinUnits::GRUMP, nFeeRequired));
+    QString strMessage =
+        tr("This transaction is over the size limit.  You can still send it for a fee of %1, "
+          "which goes to the nodes that process your transaction and helps to support the network.  "
+          "Do you want to pay the fee?").arg(
+                BitcoinUnits::formatWithUnit(BitcoinUnits::BTC, nFeeRequired));
     QMessageBox::StandardButton retval = QMessageBox::question(
           this, tr("Confirm transaction fee"), strMessage,
           QMessageBox::Yes|QMessageBox::Cancel, QMessageBox::Yes);
     *payFee = (retval == QMessageBox::Yes);
 }
 
-//void GrumpyCoinGUI::incomingTransaction(const QString& date, int unit, qint64 amount, const QString& type, const QString& address)
-void GrumpyCoinGUI::incomingTransaction(const QModelIndex& parent, int start, int /*end*/)
+void BitcoinGUI::incomingTransaction(const QModelIndex & parent, int start, int end)
 {
-    // Prevent balloon-spam when initial block download is in progress
-    if(!walletModel || !clientModel || clientModel->inInitialBlockDownload())
+    if(!walletModel || !clientModel)
         return;
-
     TransactionTableModel *ttm = walletModel->getTransactionTableModel();
-
-    QString date = ttm->index(start, TransactionTableModel::Date, parent)
-                     .data().toString();
     qint64 amount = ttm->index(start, TransactionTableModel::Amount, parent)
-                      .data(Qt::EditRole).toULongLong();
-    QString type = ttm->index(start, TransactionTableModel::Type, parent)
-                     .data().toString();
-    QString address = ttm->index(start, TransactionTableModel::ToAddress, parent)
-                        .data().toString();
-
-    // Play sound
-    if (clientModel->getOptionsModel()->getAllowSounds())
+                    .data(Qt::EditRole).toULongLong();
+    if(!clientModel->inInitialBlockDownload())
     {
-        // Incomings only
-        if (amount > 0)
-        {
-            boost::filesystem::path wavPath = GetDataDir() / "incom.wav";
-            QString strWavPath = QString::fromStdString(wavPath.string());
-            if (!QFile::exists(strWavPath))
-                QFile::copy(":/res/incom.wav", strWavPath);
-            QSound::play(strWavPath);
-        }
-    }
+        // On new transaction, make an info balloon
+        // Unless the initial block download is in progress, to prevent balloon-spam
+        QString date = ttm->index(start, TransactionTableModel::Date, parent)
+                        .data().toString();
+        QString type = ttm->index(start, TransactionTableModel::Type, parent)
+                        .data().toString();
+        QString address = ttm->index(start, TransactionTableModel::ToAddress, parent)
+                        .data().toString();
+        QIcon icon = qvariant_cast<QIcon>(ttm->index(start,
+                            TransactionTableModel::ToAddress, parent)
+                        .data(Qt::DecorationRole));
 
-    // On new transaction, make an info balloon
-    message((amount)<0 ? tr("Sent transaction") : tr("Incoming transaction"),
-             tr("Date: %1\n"
-                "Amount: %2\n"
-                "Type: %3\n"
-                "Address: %4\n")
-                  .arg(date)
-                  .arg(GrumpyCoinUnits::formatWithUnit(walletModel->getOptionsModel()->getDisplayUnit(), amount, true))
-                  .arg(type)
-                  .arg(address), CClientUIInterface::MSG_INFORMATION);
+        notificator->notify(Notificator::Information,
+                            (amount)<0 ? tr("Sent transaction") :
+                                         tr("Incoming transaction"),
+                              tr("Date: %1\n"
+                                 "Amount: %2\n"
+                                 "Type: %3\n"
+                                 "Address: %4\n")
+                              .arg(date)
+                              .arg(BitcoinUnits::formatWithUnit(walletModel->getOptionsModel()->getDisplayUnit(), amount, true))
+                              .arg(type)
+                              .arg(address), icon);
+    }
 }
 
-void GrumpyCoinGUI::gotoOverviewPage()
+void BitcoinGUI::gotoOverviewPage()
 {
     overviewAction->setChecked(true);
     centralWidget->setCurrentWidget(overviewPage);
@@ -884,7 +759,16 @@ void GrumpyCoinGUI::gotoOverviewPage()
     disconnect(exportAction, SIGNAL(triggered()), 0, 0);
 }
 
-void GrumpyCoinGUI::gotoHistoryPage()
+void BitcoinGUI::gotoMiningPage()
+{
+    miningAction->setChecked(true);
+    centralWidget->setCurrentWidget(miningPage);
+
+    exportAction->setEnabled(false);
+    disconnect(exportAction, SIGNAL(triggered()), 0, 0);
+}
+
+void BitcoinGUI::gotoHistoryPage()
 {
     historyAction->setChecked(true);
     centralWidget->setCurrentWidget(transactionsPage);
@@ -894,7 +778,7 @@ void GrumpyCoinGUI::gotoHistoryPage()
     connect(exportAction, SIGNAL(triggered()), transactionView, SLOT(exportClicked()));
 }
 
-void GrumpyCoinGUI::gotoAddressBookPage()
+void BitcoinGUI::gotoAddressBookPage()
 {
     addressBookAction->setChecked(true);
     centralWidget->setCurrentWidget(addressBookPage);
@@ -904,7 +788,7 @@ void GrumpyCoinGUI::gotoAddressBookPage()
     connect(exportAction, SIGNAL(triggered()), addressBookPage, SLOT(exportClicked()));
 }
 
-void GrumpyCoinGUI::gotoReceiveCoinsPage()
+void BitcoinGUI::gotoReceiveCoinsPage()
 {
     receiveCoinsAction->setChecked(true);
     centralWidget->setCurrentWidget(receiveCoinsPage);
@@ -914,63 +798,61 @@ void GrumpyCoinGUI::gotoReceiveCoinsPage()
     connect(exportAction, SIGNAL(triggered()), receiveCoinsPage, SLOT(exportClicked()));
 }
 
-//void GrumpyCoinGUI::gotoSendCoinsPage(QString addr)
-void GrumpyCoinGUI::gotoSendCoinsPage()
+void BitcoinGUI::gotoSendCoinsPage()
 {
     sendCoinsAction->setChecked(true);
     centralWidget->setCurrentWidget(sendCoinsPage);
 
     exportAction->setEnabled(false);
     disconnect(exportAction, SIGNAL(triggered()), 0, 0);
-    
-    //if(!addr.isEmpty())
-    //sendCoinsPage->setAddress(addr);
 }
 
-void GrumpyCoinGUI::gotoSignMessageTab(QString addr)
+void BitcoinGUI::gotoSignMessageTab(QString addr)
 {
-    centralWidget->setCurrentWidget(signMessagePage);
+#ifdef FIRST_CLASS_MESSAGING
+    firstClassMessagingAction->setChecked(true);
+    centralWidget->setCurrentWidget(signVerifyMessageDialog);
 
     exportAction->setEnabled(false);
     disconnect(exportAction, SIGNAL(triggered()), 0, 0);
 
+    signVerifyMessageDialog->showTab_SM(false);
+#else
     // call show() in showTab_SM()
-    signMessagePage->showTab_SM(true);
+    signVerifyMessageDialog->showTab_SM(true);
+#endif
 
     if(!addr.isEmpty())
-        signMessagePage->setAddress_SM(addr);
+        signVerifyMessageDialog->setAddress_SM(addr);
 }
 
-void GrumpyCoinGUI::gotoVerifyMessageTab(QString addr)
+void BitcoinGUI::gotoVerifyMessageTab(QString addr)
 {
-    centralWidget->setCurrentWidget(verifyMessagePage);
+#ifdef FIRST_CLASS_MESSAGING
+    firstClassMessagingAction->setChecked(true);
+    centralWidget->setCurrentWidget(signVerifyMessageDialog);
 
     exportAction->setEnabled(false);
     disconnect(exportAction, SIGNAL(triggered()), 0, 0);
 
+    signVerifyMessageDialog->showTab_VM(false);
+#else
     // call show() in showTab_VM()
-    verifyMessagePage->showTab_VM(true);
+    signVerifyMessageDialog->showTab_VM(true);
+#endif
 
     if(!addr.isEmpty())
-        verifyMessagePage->setAddress_VM(addr);
+        signVerifyMessageDialog->setAddress_VM(addr);
 }
 
-void GrumpyCoinGUI::gotoServiceMessagesPage()
-{
-    centralWidget->setCurrentWidget(serviceMessagesPage);
-
-    exportAction->setEnabled(false);
-    disconnect(exportAction, SIGNAL(triggered()), 0, 0);
-}
-
-void GrumpyCoinGUI::dragEnterEvent(QDragEnterEvent *event)
+void BitcoinGUI::dragEnterEvent(QDragEnterEvent *event)
 {
     // Accept only URIs
     if(event->mimeData()->hasUrls())
         event->acceptProposedAction();
 }
 
-void GrumpyCoinGUI::dropEvent(QDropEvent *event)
+void BitcoinGUI::dropEvent(QDropEvent *event)
 {
     if(event->mimeData()->hasUrls())
     {
@@ -978,88 +860,21 @@ void GrumpyCoinGUI::dropEvent(QDropEvent *event)
         QList<QUrl> uris = event->mimeData()->urls();
         foreach(const QUrl &uri, uris)
         {
-            //if (walletFrame->handleURI(uri.toString()))
-	    if (sendCoinsPage->handleURI(uri.toString()))
+            if (sendCoinsPage->handleURI(uri.toString()))
                 nValidUrisFound++;
         }
 
         // if valid URIs were found
         if (nValidUrisFound)
-            //walletFrame->gotoSendCoinsPage();
-	    gotoSendCoinsPage();
+            gotoSendCoinsPage();
         else
-            message(tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid GrumpyCoin address or malformed URI parameters."),
-                      CClientUIInterface::ICON_WARNING);
+            notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid GrumpyCoin address or malformed URI parameters."));
     }
 
     event->acceptProposedAction();
 }
 
-bool GrumpyCoinGUI::eventFilter(QObject *object, QEvent *event)
-{
-    // Catch status tip events
-    if (event->type() == QEvent::StatusTip)
-    {
-        // Prevent adding text from setStatusTip(), if we currently use the status bar for displaying other stuff
-        if (progressBarLabel->isVisible() || progressBar->isVisible())
-            return true;
-    }
-    if (object == ui->wMining && event->type() == QEvent::MouseButtonPress)
-        onMiningClicked();
-    if (object == ui->wHome && event->type() == QEvent::MouseButtonPress)
-        gotoOverviewPage();
-    if (object == ui->checkBox && event->type() == QEvent::MouseButtonPress)
-        onMiningClicked();
-    return QMainWindow::eventFilter(object, event);
-}
-
-void GrumpyCoinGUI::resizeEvent(QResizeEvent *e)
-{
-    updateMask();
-    QMainWindow::resizeEvent(e);
-}
-
-void GrumpyCoinGUI::paintEvent(QPaintEvent *e)
-{
-    Q_UNUSED(e);
-
-    updateMask();
-
-    QPainter painter(this);
-    painter.setRenderHint(QPainter::Antialiasing); // we need this in order to get correct rounded corners
-    painter.setPen(QPen(QBrush(Qt::black), 2.0));
-    painter.setBrush(QBrush(QColor(0, 166, 207)));
-
-    QMainWindow::paintEvent(e);
-}
-
-void GrumpyCoinGUI::updateMask()
-{
-    // main form mask
-    _mask = QBitmap(size());
-    _mask.clear();
-    {
-        QPainter painter(&_mask);
-        painter.fillRect(rect(), Qt::color1);
-        painter.drawImage(0, 0, QImage("://res/mask0.png"));
-        painter.end();
-    }
-    setMask(_mask);
-
-    // logo widget corner
-    _logoWidgetMask = QBitmap(ui->wHeader->size());
-    _logoWidgetMask.clear();
-
-    {
-        QPainter painter(&_logoWidgetMask);
-        painter.fillRect(ui->wHeader->rect(), Qt::color1);
-        painter.drawImage(0, 0, QImage("://res/mask1.png"));
-        painter.end();
-    }
-    ui->wHeader->setMask(_logoWidgetMask);
-}
-
-void GrumpyCoinGUI::handleURI(QString strURI)
+void BitcoinGUI::handleURI(QString strURI)
 {
     // URI has to be valid
     if (sendCoinsPage->handleURI(strURI))
@@ -1068,147 +883,10 @@ void GrumpyCoinGUI::handleURI(QString strURI)
         gotoSendCoinsPage();
     }
     else
-        message(tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid GrumpyCoin address or malformed URI parameters."),
-                  CClientUIInterface::ICON_WARNING);
+        notificator->notify(Notificator::Warning, tr("URI handling"), tr("URI can not be parsed! This can be caused by an invalid GrumpyCoin address or malformed URI parameters."));
 }
 
-void GrumpyCoinGUI::menuFileRequested()
-{
-    QMenu menu(this);
-    QAction* home = menu.addAction(tr("&Overview").remove('&'));
-    QAction* messages = menu.addAction(tr("Service messages"));
-    QAction* qaBackupWallet = menu.addAction(tr("Backup Wallet"));
-    QAction* exportData = menu.addAction(tr("&Export...").remove('&').remove("..."));
-    QAction* exitApp = menu.addAction(QIcon("://res/menu/menu_exit.png"), tr("E&xit").remove('&'));
-
-    QPoint poz = QCursor::pos();
-    if (QWidget* w = qobject_cast<QWidget*>(sender()))
-        poz = w->mapToGlobal(w->rect().bottomLeft());
-
-    QAction* selected = menu.exec(poz);
-    if (!selected)
-        return;
-
-    if (selected == home)
-    {
-        gotoOverviewPage();
-    }
-    else if (selected == messages)
-    {
-        gotoServiceMessagesPage();
-    }
-    else if (selected == qaBackupWallet) {
-        this->backupWallet();
-    }
-    else if (selected == exportData)
-    {
-        if (centralWidget->currentWidget() == transactionsPage)
-        {
-            transactionView->exportClicked();
-        } else if (centralWidget->currentWidget() == addressBookPage)
-        {
-            addressBookPage->exportClicked();
-        } else if (centralWidget->currentWidget() == receiveCoinsPage)
-        {
-            receiveCoinsPage->exportClicked();
-        }
-    }
-    else if (selected == exitApp)
-    {
-        qApp->quit();
-    }
-}
-
-void GrumpyCoinGUI::menuOperationsRequested()
-{
-    QMenu menu(this);
-    QAction* send = menu.addAction(tr("Send GrumpyCoins"));
-    QAction* receive = menu.addAction(tr("Receive GrumpyCoins"));
-    QAction* transactions = menu.addAction(tr("&Transactions").remove('&'));
-    QAction* addressBook = menu.addAction(tr("&Address Book").remove('&'));
-    QAction* encryptWallet = menu.addAction(tr("&Encrypt Wallet...").remove('&').remove("..."));
-    QAction* mining = menu.addAction(tr("Mining"));
-    QAction* changePassword = menu.addAction(tr("&Change Passphrase...").remove('&').remove("..."));
-    QAction* signMessage = menu.addAction(QIcon("://res/menu/sign.png"), tr("Sign &message...").remove('&').remove("..."));
-    QAction* verifySignature = menu.addAction(QIcon("://res/menu/check_signature.png"), tr("&Verify message...").remove('&').remove("..."));
-
-    QPoint poz = QCursor::pos();
-    if (QWidget* w = qobject_cast<QWidget*>(sender()))
-        poz = w->mapToGlobal(w->rect().bottomLeft());
-
-    QAction* selected = menu.exec(poz);
-    if (!selected)
-        return;
-
-    if (selected == send)
-    {
-        gotoSendCoinsPage();
-    }
-    else if (selected == receive)
-    {
-        gotoReceiveCoinsPage();
-    }
-    else if (selected == transactions)
-    {
-        gotoHistoryPage();
-    }
-    else if (selected == addressBook)
-    {
-        gotoAddressBookPage();
-    }
-    else if (selected == encryptWallet)
-    {
-        if (walletModel->getEncryptionStatus() == WalletModel::Unencrypted)
-            this->encryptWallet(true);
-    }
-    else if (selected == mining)
-    {
-        onMiningClicked();
-    }
-    else if (selected == changePassword)
-    {
-        if (walletModel->getEncryptionStatus() == WalletModel::Unlocked || walletModel->getEncryptionStatus() == WalletModel::Locked)
-            changePassphrase();
-    }
-    else if (selected == signMessage)
-    {
-        gotoSignMessageTab();
-    }
-    else if (selected == verifySignature)
-    {
-        gotoVerifyMessageTab();
-    }
-}
-
-void GrumpyCoinGUI::menuSettingsRequested()
-{
-    QMenu menu(this);
-    QAction* commonAndNetwork = menu.addAction(tr("Common, Network"));
-    QAction* debugWindow = menu.addAction(tr("&Debug window").remove('&'));
-    QAction* about = menu.addAction(tr("&About GrumpyCoin").remove('&'));    
-
-    QPoint poz = QCursor::pos();
-    if (QWidget* w = qobject_cast<QWidget*>(sender()))
-        poz = w->mapToGlobal(w->rect().bottomLeft());
-
-    QAction* selected = menu.exec(poz);
-    if (!selected)
-        return;
-
-    if (selected == commonAndNetwork)
-    {
-        optionsClicked();
-    }
-    else if (selected == about)
-    {
-        aboutClicked();
-    } else if (selected == debugWindow)
-    {
-        on_bHelp_clicked();
-    }
-}
-
-void GrumpyCoinGUI::setEncryptionStatus(int status)
+void BitcoinGUI::setEncryptionStatus(int status)
 {
     switch(status)
     {
@@ -1237,7 +915,7 @@ void GrumpyCoinGUI::setEncryptionStatus(int status)
     }
 }
 
-void GrumpyCoinGUI::encryptWallet(bool status)
+void BitcoinGUI::encryptWallet(bool status)
 {
     if(!walletModel)
         return;
@@ -1249,29 +927,25 @@ void GrumpyCoinGUI::encryptWallet(bool status)
     setEncryptionStatus(walletModel->getEncryptionStatus());
 }
 
-void GrumpyCoinGUI::backupWallet()
+void BitcoinGUI::backupWallet()
 {
     QString saveDir = QDesktopServices::storageLocation(QDesktopServices::DocumentsLocation);
     QString filename = QFileDialog::getSaveFileName(this, tr("Backup Wallet"), saveDir, tr("Wallet Data (*.dat)"));
     if(!filename.isEmpty()) {
         if(!walletModel->backupWallet(filename)) {
-            message(tr("Backup Failed"), tr("There was an error trying to save the wallet data to the new location."),
-                      CClientUIInterface::MSG_ERROR);
+            QMessageBox::warning(this, tr("Backup Failed"), tr("There was an error trying to save the wallet data to the new location."));
         }
-        else
-            message(tr("Backup Successful"), tr("The wallet data was successfully saved to the new location."),
-                      CClientUIInterface::MSG_INFORMATION);
     }
 }
 
-void GrumpyCoinGUI::changePassphrase()
+void BitcoinGUI::changePassphrase()
 {
     AskPassphraseDialog dlg(AskPassphraseDialog::ChangePass, this);
     dlg.setModel(walletModel);
     dlg.exec();
 }
 
-void GrumpyCoinGUI::unlockWallet()
+void BitcoinGUI::unlockWallet()
 {
     if(!walletModel)
         return;
@@ -1284,7 +958,7 @@ void GrumpyCoinGUI::unlockWallet()
     }
 }
 
-void GrumpyCoinGUI::showNormalIfMinimized(bool fToggleHidden)
+void BitcoinGUI::showNormalIfMinimized(bool fToggleHidden)
 {
     // activateWindow() (sometimes) helps with keyboard focus on Windows
     if (isHidden())
@@ -1306,24 +980,7 @@ void GrumpyCoinGUI::showNormalIfMinimized(bool fToggleHidden)
         hide();
 }
 
-void GrumpyCoinGUI::toggleHidden()
+void BitcoinGUI::toggleHidden()
 {
     showNormalIfMinimized(true);
-}
-
-void GrumpyCoinGUI::detectShutdown()
-{
-    if (ShutdownRequested())
-        QMetaObject::invokeMethod(QCoreApplication::instance(), "quit", Qt::QueuedConnection);
-}
-
-void GrumpyCoinGUI::onMiningClicked()
-{
-    //ui->wMining->setStyleSheet("background-color:black;");
-    centralWidget->setCurrentWidget(miningPage);
-}
-
-void GrumpyCoinGUI::on_bHelp_clicked()
-{    
-    rpcConsole->show();
 }

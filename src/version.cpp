@@ -1,5 +1,5 @@
 // Copyright (c) 2012 The Bitcoin developers
-// Copyright (c) 2013-2079 Dr. Kimoto Chan
+// Copyright (c) 2012 Litecoin Developers
 // Distributed under the MIT/X11 software license, see the accompanying
 // file COPYING or http://www.opensource.org/licenses/mit-license.php.
 #include <string>
@@ -7,13 +7,14 @@
 #include "version.h"
 
 // Name of client reported in the 'version' message. Report the same name
-// for both grumpycoind and grumpycoin-qt, to make it harder for attackers to
+// for both bitcoind and bitcoin-qt, to make it harder for attackers to
 // target servers or GUI users specifically.
-const std::string CLIENT_NAME("GrumpyCoin");
+const std::string CLIENT_NAME("Satoshi");
 
 // Client version number
+/*Clarv super smash boxoffice hit fix*/
+//#define CLIENT_VERSION_SUFFIX   "-geo"
 #define CLIENT_VERSION_SUFFIX   ""
-
 
 // The following part of the code determines the CLIENT_BUILD variable.
 // Several mechanisms are used for this:
@@ -34,26 +35,26 @@ const std::string CLIENT_NAME("GrumpyCoin");
 #    include "build.h"
 #endif
 
-// git will put "#define GIT_ARCHIVE 1" on the next line inside archives. 
-//#define GIT_ARCHIVE 1
+// git will put "#define GIT_ARCHIVE 1" on the next line inside archives. $Format:%n#define GIT_ARCHIVE 1$
 #ifdef GIT_ARCHIVE
-#    define GIT_COMMIT_ID "03c4ba3"
+#    define GIT_COMMIT_ID "$Format:%h$"
 #    define GIT_COMMIT_DATE "$Format:%cD"
 #endif
 
+#define STRINGIFY(s) #s
+
 /*Clarv super smash boxoffice hit fix*/
 //#define BUILD_DESC_FROM_COMMIT(maj,min,rev,build,commit) \
-//    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) "." DO_STRINGIZE(build) "" commit
+//    "v" STRINGIFY(maj) "." STRINGIFY(min) "." STRINGIFY(rev) "." STRINGIFY(build) "-g" commit
 #define BUILD_DESC_FROM_COMMIT(maj,min,rev,build,commit) \
-    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) "." DO_STRINGIZE(build) "-beta" commit
+    "v" STRINGIFY(maj) "." STRINGIFY(min) "." STRINGIFY(rev) "." STRINGIFY(build) "-beta" commit
 //#define BUILD_DESC_FROM_UNKNOWN(maj,min,rev,build) \
-//    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) "." DO_STRINGIZE(build) "-unk"
+//    "v" STRINGIFY(maj) "." STRINGIFY(min) "." STRINGIFY(rev) "." STRINGIFY(build) "-unk"
 #define BUILD_DESC_FROM_UNKNOWN(maj,min,rev,build) \
-    "v" DO_STRINGIZE(maj) "." DO_STRINGIZE(min) "." DO_STRINGIZE(rev) "." DO_STRINGIZE(build) "-beta"
+    "v" STRINGIFY(maj) "." STRINGIFY(min) "." STRINGIFY(rev) "." STRINGIFY(build) "-beta"
 
 #ifndef BUILD_DESC
 #    ifdef GIT_COMMIT_ID
-//#        define BUILD_DESC BUILD_DESC_FROM_COMMIT(MC_CLIENT_VERSION_MAJOR, MC_CLIENT_VERSION_MINOR, MC_CLIENT_VERSION_REVISION, MC_CLIENT_VERSION_BUILD, GIT_COMMIT_ID)
 #        define BUILD_DESC BUILD_DESC_FROM_COMMIT(CLIENT_VERSION_MAJOR, CLIENT_VERSION_MINOR, CLIENT_VERSION_REVISION, CLIENT_VERSION_BUILD, GIT_COMMIT_ID)
 #    else
 #        define BUILD_DESC BUILD_DESC_FROM_UNKNOWN(CLIENT_VERSION_MAJOR, CLIENT_VERSION_MINOR, CLIENT_VERSION_REVISION, CLIENT_VERSION_BUILD)

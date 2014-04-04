@@ -3,7 +3,7 @@
 
 #include <QAbstractListModel>
 
-/** Interface from Qt to configuration data structure for GrumpyCoin client.
+/** Interface from Qt to configuration data structure for Bitcoin client.
    To Qt, the options are presented as a list with the different options
    laid out vertically.
    This can be changed to a tree once the settings become sufficiently
@@ -26,17 +26,14 @@ public:
         ProxyPort,         // int
         ProxySocksVersion, // int
         Fee,               // qint64
-        DisplayUnit,       // GrumpyCoinUnits::Unit
+        DisplayUnit,       // BitcoinUnits::Unit
         DisplayAddresses,  // bool
-        StartMiningAtStartup, //bool
+        DetachDatabases,   // bool
         Language,          // QString
-        AllowSounds,        // bool
-        CheckUpdatesAtStartup, // bool
-        OptionIDRowCount
+        OptionIDRowCount,
     };
 
     void Init();
-    void Reset();
 
     /* Migrate settings from wallet.dat after app initialization */
     bool Upgrade(); /* returns true if settings upgraded */
@@ -47,24 +44,18 @@ public:
 
     /* Explicit getters */
     qint64 getTransactionFee();
-    bool getMinimizeToTray() { return fMinimizeToTray; }
-    bool getMinimizeOnClose() { return fMinimizeOnClose; }
-    int getDisplayUnit() { return nDisplayUnit; }
-    bool getDisplayAddresses() { return bDisplayAddresses; }
-    bool getStartMiningAtStartup() { return bStartMiningAtStartup; }
+    bool getMinimizeToTray();
+    bool getMinimizeOnClose();
+    int getDisplayUnit();
+    bool getDisplayAddresses();
     QString getLanguage() { return language; }
-    bool getAllowSounds() { return bAllowSounds; }
-    bool getCheckUpdatesAtStartup() { return bCheckUpdatesAtStartup; }
 
 private:
     int nDisplayUnit;
     bool bDisplayAddresses;
     bool fMinimizeToTray;
     bool fMinimizeOnClose;
-    bool bStartMiningAtStartup;
     QString language;
-    bool bAllowSounds;
-    bool bCheckUpdatesAtStartup;
 
 signals:
     void displayUnitChanged(int unit);

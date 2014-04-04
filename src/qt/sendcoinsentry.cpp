@@ -1,6 +1,5 @@
 #include "sendcoinsentry.h"
 #include "ui_sendcoinsentry.h"
-
 #include "guiutil.h"
 #include "bitcoinunits.h"
 #include "addressbookpage.h"
@@ -18,13 +17,13 @@ SendCoinsEntry::SendCoinsEntry(QWidget *parent) :
 {
     ui->setupUi(this);
 
-#ifdef Q_OS_MAC
+#ifdef Q_WS_MAC
     ui->payToLayout->setSpacing(4);
 #endif
 #if QT_VERSION >= 0x040700
     /* Do not move this to the XML file, Qt before 4.7 will choke on it */
     ui->addAsLabel->setPlaceholderText(tr("Enter a label for this address to add it to your address book"));
-    ui->payTo->setPlaceholderText(tr("Enter a GrumpyCoin address (e.g. 7NS17iag9jJgTHD1VXjvLCEnZuQ3rJDE9L)"));
+    ui->payTo->setPlaceholderText(tr("Enter a GrumpyCoin address (they start with an 'm')"));
 #endif
     setFocusPolicy(Qt::TabFocus);
     setFocusProxy(ui->payTo);
@@ -48,7 +47,7 @@ void SendCoinsEntry::on_addressBookButton_clicked()
     if(!model)
         return;
     AddressBookPage dlg(AddressBookPage::ForSending, AddressBookPage::SendingTab, this);
-    dlg.setModel(model->getAddressTableModel(), true);
+    dlg.setModel(model->getAddressTableModel());
     if(dlg.exec())
     {
         ui->payTo->setText(dlg.getReturnValue());
@@ -87,13 +86,8 @@ void SendCoinsEntry::clear()
     ui->addAsLabel->clear();
     ui->payAmount->clear();
     ui->payTo->setFocus();
-    // update the display unit, to not use the default ("GRUMP")
+    // update the display unit, to not use the default ("BTC")
     updateDisplayUnit();
-}
-
-void SendCoinsEntry::on_addButton_clicked()
-{
-    emit addEntry();
 }
 
 void SendCoinsEntry::on_deleteButton_clicked()
@@ -144,10 +138,9 @@ SendCoinsRecipient SendCoinsEntry::getValue()
 QWidget *SendCoinsEntry::setupTabChain(QWidget *prev)
 {
     QWidget::setTabOrder(prev, ui->payTo);
-    QWidget::setTabOrder(ui->payTo, ui->addButton);
-    QWidget::setTabOrder(ui->addButton, ui->pasteButton);
-    QWidget::setTabOrder(ui->pasteButton, ui->addressBookButton);
-    QWidget::setTabOrder(ui->addressBookButton, ui->deleteButton);
+    QWidget::setTabOrder(ui->payTo, ui->addressBookButton);
+    QWidget::setTabOrder(ui->addressBookButton, ui->pasteButton);
+    QWidget::setTabOrder(ui->pasteButton, ui->deleteButton);
     QWidget::setTabOrder(ui->deleteButton, ui->addAsLabel);
     return ui->payAmount->setupTabChain(ui->addAsLabel);
 }
@@ -157,12 +150,6 @@ void SendCoinsEntry::setValue(const SendCoinsRecipient &value)
     ui->payTo->setText(value.address);
     ui->addAsLabel->setText(value.label);
     ui->payAmount->setValue(value.amount);
-}
-
-void SendCoinsEntry::setAddress(const QString &address)
-{
-    ui->payTo->setText(address);
-    ui->payAmount->setFocus();
 }
 
 bool SendCoinsEntry::isClear()

@@ -1,19 +1,10 @@
-grumpycoin community 
 version 2.1
 changes			comment
-lots of files!		Upgrade bitcoin 0.6 to 0.8,
-			renamed files so it easier to upgrade to new bitcoin releases
-src\qt\locale\		corrected translations
-src\qt\forms\*.ui	new user interface
-src\qt\res\images	new splash images
-src\net.cpp		No hardcoded unsupported DNSseed 162.243.90.199:55904, using grumpyconf.conf
-src\netbase.cpp 	old grumpycoin supports I2P network, removed
 src\main.cpp		KGW exploit fix, startblock 48200
 			https://bitcointalk.org/index.php?topic=552895
 src\main.h		KGW exploit fix, startblock 48200
-protocol.h		corrected ports
-
-MESSAGE FUNCTION NOT SUPPORTED YET, WILL BE TESTED OR REMOVED, KGW EXPLOIT FIX FIRST PRIORITY!
+src\version.h		updated version
+src\qt\bitcoingui.cpp	tooltip smaller font
 
 version 2.0
 
